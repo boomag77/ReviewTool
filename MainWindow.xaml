@@ -82,18 +82,9 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Open original folder..." Margin="6,0,0,0"
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start preview..." Margin="6,0,0,0"
                             Focusable="False"
-                            Click="OpenOriginalFolder_Click" />
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Open original image..." Margin="6,0,0,0"
-                            Focusable="False" />
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Open processed folder..." Margin="6,0,0,0"
-                            Focusable="False"
-                            Click="OpenProcessedFolder_Click" />
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Open processed image..." Margin="6,0,0,0"
-                            Focusable="False" />
+                            Click="StartPreview_Click" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -114,26 +105,18 @@
 
             <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
-                <Grid>
-                    <Viewbox Stretch="Uniform">
-                        <Image x:Name="OriginalImage" />
-                    </Viewbox>
-                    <TextBlock Text="Drop original image here" HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Foreground="{StaticResource SecondaryTextBrush}" />
-                </Grid>
+                <Viewbox Stretch="Uniform">
+                    <Image x:Name="OriginalImage" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
+                </Viewbox>
             </Border>
 
             <GridSplitter Grid.Row="1" Grid.Column="1" Width="6" Background="{StaticResource PipelineCardBorderBrush}" />
 
             <Border Grid.Row="1" Grid.Column="2" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
-                <Grid>
-                    <Viewbox Stretch="Uniform">
-                        <Image x:Name="ProcessedImage" />
-                    </Viewbox>
-                    <TextBlock Text="Processed image preview" HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Foreground="{StaticResource SecondaryTextBrush}" />
-                </Grid>
+                <Viewbox Stretch="Uniform">
+                    <Image x:Name="ProcessedImage" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
+                </Viewbox>
             </Border>
         </Grid>
     </DockPanel>

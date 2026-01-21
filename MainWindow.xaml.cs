@@ -1,16 +1,12 @@
-using System.Collections.Generic;
+using Microsoft.Win32;
 using System.Collections.Frozen;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Microsoft.Win32;
 using System.Windows.Threading;
 
 namespace ReviewTool;
@@ -27,8 +23,6 @@ public partial class MainWindow : Window
         new[] { ".bmp", ".gif", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp" }
             .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    private string? _originalFolder;
-    private string? _processedFolder;
     private readonly CurrentFolderIndex _originalFolderIndex;
     private readonly CurrentFolderIndex _processedFolderIndex;
     private CancellationTokenSource? _originalFolderIndexCts;
@@ -43,29 +37,22 @@ public partial class MainWindow : Window
         _processedFolderIndex = new CurrentFolderIndex(this);
     }
 
-    private async void OpenOriginalFolder_Click(object sender, RoutedEventArgs e)
+    private async void StartPreview_Click(object sender, RoutedEventArgs e)
     {
-        var folder = SelectFolder("Select original images folder");
-        if (string.IsNullOrWhiteSpace(folder))
+        var originalFolder = SelectFolder("Select original images folder");
+        if (string.IsNullOrWhiteSpace(originalFolder))
         {
             return;
         }
 
-        _originalFolder = folder;
-        await LoadFolderImagesAsync(folder, isOriginal: true);
-        FocusWindowForInputDeferred();
-    }
-
-    private async void OpenProcessedFolder_Click(object sender, RoutedEventArgs e)
-    {
-        var folder = SelectFolder("Select processed images folder");
-        if (string.IsNullOrWhiteSpace(folder))
+        var processedFolder = SelectFolder("Select processed images folder");
+        if (string.IsNullOrWhiteSpace(processedFolder))
         {
             return;
         }
 
-        _processedFolder = folder;
-        await LoadFolderImagesAsync(folder, isOriginal: false);
+        await LoadFolderImagesAsync(originalFolder, isOriginal: true);
+        await LoadFolderImagesAsync(processedFolder, isOriginal: false);
         FocusWindowForInputDeferred();
     }
 
@@ -321,10 +308,7 @@ public partial class MainWindow : Window
     private static BitmapSource LoadBitmapImage(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        var decoder = BitmapDecoder.Create(
-            stream,
-            BitmapCreateOptions.PreservePixelFormat | BitmapCreateOptions.IgnoreImageCache,
-            BitmapCacheOption.OnLoad);
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
         var frame = decoder.Frames[0];
         var oriented = ApplyExifOrientation(frame);
         oriented.Freeze();
@@ -338,18 +322,27 @@ public partial class MainWindow : Window
             return frame;
         }
 
-        if (!metadata.ContainsQuery("/app1/ifd/{ushort=274}"))
+        ushort orientation;
+        try
+        {
+            if (!metadata.ContainsQuery("/app1/ifd/{ushort=274}"))
+            {
+                return frame;
+            }
+
+            var orientationObj = metadata.GetQuery("/app1/ifd/{ushort=274}");
+            if (orientationObj is null)
+            {
+                return frame;
+            }
+
+            orientation = Convert.ToUInt16(orientationObj);
+        }
+        catch
         {
             return frame;
         }
 
-        var orientationObj = metadata.GetQuery("/app1/ifd/{ushort=274}");
-        if (orientationObj is null)
-        {
-            return frame;
-        }
-
-        var orientation = Convert.ToUInt16(orientationObj);
         var width = frame.PixelWidth / 2d;
         var height = frame.PixelHeight / 2d;
 
