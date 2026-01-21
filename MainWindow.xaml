@@ -6,7 +6,17 @@
         xmlns:local="clr-namespace:ReviewTool"
         mc:Ignorable="d"
         Title="ReviewTool" Height="720" Width="1200" MinHeight="640" MinWidth="980"
-        Background="LightGray">
+        Background="LightGray"
+        Focusable="True"
+        KeyboardNavigation.DirectionalNavigation="None">
+    <Window.InputBindings>
+        <KeyBinding Key="Right" Command="{x:Static local:MainWindow.NextImageCommand}" />
+        <KeyBinding Key="Left" Command="{x:Static local:MainWindow.PreviousImageCommand}" />
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static local:MainWindow.NextImageCommand}" Executed="NextImageCommand_Executed" />
+        <CommandBinding Command="{x:Static local:MainWindow.PreviousImageCommand}" Executed="PreviousImageCommand_Executed" />
+    </Window.CommandBindings>
     <Window.Resources>
         <SolidColorBrush x:Key="PipelineCardBackgroundBrush" Color="#2F3136"/>
         <SolidColorBrush x:Key="PipelineCardBorderBrush" Color="#464A52"/>
@@ -68,19 +78,22 @@
                 BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="ReviewTool" FontSize="18" FontWeight="SemiBold" />
-                    <TextBlock Text="  |  Image Review" Margin="8,0,0,0" Foreground="{StaticResource SecondaryTextBrush}" />
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Open original folder..." Margin="6,0,0,0"
+                            Focusable="False"
+                            Click="OpenOriginalFolder_Click" />
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Open original image..." Margin="6,0,0,0"
+                            Focusable="False" />
                 </StackPanel>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Open..." Margin="6,0,0,0" />
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Save As..." Margin="6,0,0,0" />
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Fit" Margin="6,0,0,0" />
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Actual Size" Margin="6,0,0,0" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Open processed folder..." Margin="6,0,0,0"
+                            Focusable="False"
+                            Click="OpenProcessedFolder_Click" />
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Open processed image..." Margin="6,0,0,0"
+                            Focusable="False" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -96,31 +109,31 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Original" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
-            <TextBlock Grid.Row="0" Grid.Column="2" Text="Processed" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
+            <TextBlock x:Name="OriginalLabel" Grid.Row="0" Grid.Column="0" Text="Original 0/0" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
+            <TextBlock x:Name="ProcessedLabel" Grid.Row="0" Grid.Column="2" Text="Processed 0/0" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
 
             <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                    <Grid>
-                        <Image x:Name="OriginalImage" Stretch="None" />
-                        <TextBlock Text="Drop original image here" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Foreground="{StaticResource SecondaryTextBrush}" />
-                    </Grid>
-                </ScrollViewer>
+                <Grid>
+                    <Viewbox Stretch="Uniform">
+                        <Image x:Name="OriginalImage" />
+                    </Viewbox>
+                    <TextBlock Text="Drop original image here" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{StaticResource SecondaryTextBrush}" />
+                </Grid>
             </Border>
 
             <GridSplitter Grid.Row="1" Grid.Column="1" Width="6" Background="{StaticResource PipelineCardBorderBrush}" />
 
             <Border Grid.Row="1" Grid.Column="2" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                    <Grid>
-                        <Image x:Name="ProcessedImage" Stretch="None" />
-                        <TextBlock Text="Processed image preview" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Foreground="{StaticResource SecondaryTextBrush}" />
-                    </Grid>
-                </ScrollViewer>
+                <Grid>
+                    <Viewbox Stretch="Uniform">
+                        <Image x:Name="ProcessedImage" />
+                    </Viewbox>
+                    <TextBlock Text="Processed image preview" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{StaticResource SecondaryTextBrush}" />
+                </Grid>
             </Border>
         </Grid>
     </DockPanel>
