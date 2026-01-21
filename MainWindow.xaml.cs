@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using System.Collections.Frozen;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -11,9 +12,6 @@ using System.Windows.Threading;
 
 namespace ReviewTool;
 
-/// <summary>
-/// Interaction logic for MainWindow.xaml
-/// </summary>
 public partial class MainWindow : Window
 {
     public static readonly RoutedCommand NextImageCommand = new();
@@ -29,12 +27,99 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _processedFolderIndexCts;
     private int _currentImageIndex;
 
+    private readonly int filesCapacity = 10;
+    private readonly int imagesCapacity = 1;
+    private Channel<string> _originalPaths;
+    private Channel<string> _processedPaths;
+    private Channel<BitmapSource> _originalImages;
+    private Channel<BitmapSource> _processedImages;
+
     public MainWindow()
     {
         InitializeComponent();
         Loaded += (_, _) => Keyboard.Focus(this);
         _originalFolderIndex = new CurrentFolderIndex(this);
         _processedFolderIndex = new CurrentFolderIndex(this);
+
+    }
+
+    private void InitializeOriginalChannels(int filesCapacity, int imagesCapacity)
+    {
+        _originalPaths = Channel.CreateBounded<string>(new BoundedChannelOptions(filesCapacity)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+        });
+        _originalImages = Channel.CreateBounded<BitmapSource>(new BoundedChannelOptions(imagesCapacity)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+        });
+    }
+
+    private void InitializeProcessedChannels(int filesCapacity, int imagesCapacity)
+    {
+        _processedPaths = Channel.CreateBounded<string>(new BoundedChannelOptions(filesCapacity)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+        });
+        _processedImages = Channel.CreateBounded<BitmapSource>(new BoundedChannelOptions(imagesCapacity)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+        });
+    }
+
+    private async Task EnqueueFilesFrom(string folderPath, Channel<string> channel, CancellationToken token)
+    {
+        var files = Directory.EnumerateFiles(folderPath)
+                             .Where(f => ImageExts.Contains(Path.GetExtension(f)))
+                             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var file in files)
+            {
+                await channel.Writer.WriteAsync(file, token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error enqueuing files: {ex}");
+        }
+        finally
+        {
+            try { channel.Writer.Complete(); } catch { }
+        }
+    }
+
+
+    private async Task DequeueAndLoadImages(Channel<string> pathChannel, Channel<BitmapSource> imageChannel, CancellationToken token)
+    {
+        try
+        {
+            await foreach (var path in pathChannel.Reader.ReadAllAsync(token))
+            {
+                BitmapSource bitmap;
+                try
+                {
+                    bitmap = LoadBitmapImage(path);
+                }
+                catch
+                {
+                    continue;
+                }
+                await imageChannel.Writer.WriteAsync(bitmap, token);
+            }
+        }
+        finally
+        {
+            try { imageChannel.Writer.TryComplete(); } catch { }
+        }
     }
 
     private async void StartPreview_Click(object sender, RoutedEventArgs e)
@@ -108,7 +193,7 @@ public partial class MainWindow : Window
 
         try
         {
-            await index.CreateAsync(folder, string.Empty, cts.Token);
+            await Task.Run(() => index.CreateAsync(folder, string.Empty, cts.Token));
         }
         catch (OperationCanceledException)
         {
@@ -199,6 +284,9 @@ public partial class MainWindow : Window
         private FrozenDictionary<string, int> _folderIndexByPath = FrozenDictionary<string, int>.Empty;
 
         private readonly object _lock = new object();
+
+        private Queue<int> _cachedIndices = new Queue<int>();
+        private Queue<BitmapSource> _cachedImages = new Queue<BitmapSource>();
 
         public int CachedFileIndex
         {
