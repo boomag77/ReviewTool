@@ -109,6 +109,18 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="FileListColumn">
+                    <ColumnDefinition.Style>
+                        <Style TargetType="ColumnDefinition">
+                            <Setter Property="Width" Value="220" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsInitialReview}" Value="False">
+                                    <Setter Property="Width" Value="0" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ColumnDefinition.Style>
+                </ColumnDefinition>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition x:Name="ReviewPreviewColumn">
                     <ColumnDefinition.Style>
@@ -136,8 +148,9 @@
                 </ColumnDefinition>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding OriginalImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
-            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ReviewingImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding OriginalImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8"
+                       Foreground="#3A3A3A" />
+            <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding ReviewingImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
                         <Setter Property="Visibility" Value="Visible" />
@@ -152,12 +165,35 @@
 
             <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsInitialReview}" Value="False">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <ListBox ItemsSource="{Binding OriginalFiles}"
+                         SelectedItem="{Binding SelectedOriginalFile, Mode=TwoWay}"
+                         DisplayMemberPath="FileName"
+                         SelectionChanged="OriginalFiles_SelectionChanged"
+                         Background="{StaticResource PipelineTextboxBackgroundBrush}"
+                         Foreground="LightGray"
+                         Opacity="0.9"
+                         BorderThickness="0"
+                         Padding="6" />
+            </Border>
+
+            <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource PipelineTextboxBackgroundBrush}"
+                    BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
                 <Viewbox Stretch="Uniform">
                     <Image Source="{Binding OriginalImagePreview}" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
                 </Viewbox>
             </Border>
 
-            <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource PipelineTextboxBackgroundBrush}"
+            <Border Grid.Row="1" Grid.Column="2" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
                 <Border.Style>
                     <Style TargetType="Border">
@@ -174,7 +210,7 @@
                 </Viewbox>
             </Border>
 
-            <Border Grid.Row="1" Grid.Column="2" Background="{StaticResource PipelineTextboxBackgroundBrush}"
+            <Border Grid.Row="1" Grid.Column="3" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="8">
                 <Expander x:Name="ActionsExpander" IsExpanded="True" ExpandDirection="Left"
                           Foreground="{StaticResource PipelineTextBrush}">

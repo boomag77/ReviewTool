@@ -1,7 +1,9 @@
 using Microsoft.Win32;
 using System.Collections.Frozen;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -27,6 +29,7 @@ public partial class MainWindow : Window
     private int _currentImageIndex;
     private bool _isInitialReview;
     private string? _initialReviewFolder;
+    private bool _suppressFileSelection;
 
 
     public MainWindow()
@@ -60,6 +63,8 @@ public partial class MainWindow : Window
         _isInitialReview = false;
         _initialReviewFolder = null;
         _viewModel.IsInitialReview = false;
+        _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>();
+        _viewModel.SelectedOriginalFile = null;
         var originalFolder = SelectFolder("Select original images folder");
         if (string.IsNullOrWhiteSpace(originalFolder))
         {
@@ -115,6 +120,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        LoadOriginalFilesList(originalFolder);
         ResetProcessedIndex();
         _currentImageIndex = 0;
         await UpdatePreviewImagesAsync();
@@ -155,6 +161,32 @@ public partial class MainWindow : Window
     private void OvercuttedCommand_Executed(object sender, ExecutedRoutedEventArgs e)
     {
         Overcutted_Click(sender, new RoutedEventArgs());
+    }
+
+    private void OriginalFiles_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressFileSelection)
+        {
+            return;
+        }
+
+        if (sender is not ListBox listBox || listBox.SelectedItem is not ImageFileItem item)
+        {
+            return;
+        }
+
+        if (!_originalFolderIndex.TryGetFileIndexForPath(item.FilePath, out var idx))
+        {
+            return;
+        }
+
+        if (idx == _currentImageIndex)
+        {
+            return;
+        }
+
+        _currentImageIndex = idx;
+        _ = UpdatePreviewImagesAsync();
     }
 
     private async void OkReview_Click(object sender, RoutedEventArgs e)
@@ -348,6 +380,7 @@ public partial class MainWindow : Window
         _viewModel.ReviewingImagePreview = bitmaps[1];
 
         UpdatePreviewLabels();
+        UpdateSelectedOriginalFile();
     }
 
     private BitmapSource? LoadBitmapForIndex(CurrentFolderIndex index, int imageIndex)
@@ -387,6 +420,34 @@ public partial class MainWindow : Window
         _processedFolderIndex.ClearIndex();
         _viewModel.ReviewingImagePreview = null;
         UpdatePreviewLabels();
+    }
+
+    private void LoadOriginalFilesList(string folderPath)
+    {
+        var files = _fileProcessor.ListImageFiles(folderPath);
+        var items = files.Select(path => new ImageFileItem(path));
+        _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>(items);
+        _viewModel.SelectedOriginalFile = null;
+    }
+
+    private void UpdateSelectedOriginalFile()
+    {
+        if (!_isInitialReview)
+        {
+            return;
+        }
+
+        if (!_originalFolderIndex.TryGetFilePathForIndex(_currentImageIndex, out var currentPath))
+        {
+            return;
+        }
+
+        var match = _viewModel.OriginalFiles.FirstOrDefault(item =>
+            string.Equals(item.FilePath, currentPath, StringComparison.OrdinalIgnoreCase));
+
+        _suppressFileSelection = true;
+        _viewModel.SelectedOriginalFile = match;
+        _suppressFileSelection = false;
     }
 
     private string BuildLabel(string name, CurrentFolderIndex index)

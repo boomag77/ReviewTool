@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Frozen;
 using System.IO;
+using System.Linq;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -49,6 +50,14 @@ public sealed class FileProcessor
     public bool IsSupportedImage(string filePath)
     {
         return _imageExtensions.Contains(Path.GetExtension(filePath));
+    }
+
+    public IReadOnlyList<string> ListImageFiles(string folderPath)
+    {
+        return Directory.EnumerateFiles(folderPath)
+            .Where(IsSupportedImage)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public BitmapSource LoadBitmapImage(string path)

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media.Imaging;
@@ -11,6 +12,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _originalImageLabel = "Original 0/0";
     private string _reviewingImageLabel = "Processed 0/0";
     private bool _isInitialReview;
+    private ObservableCollection<ImageFileItem> _originalFiles = new();
+    private ImageFileItem? _selectedOriginalFile;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -42,6 +45,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _isInitialReview;
         set => SetField(ref _isInitialReview, value);
+    }
+
+    public ObservableCollection<ImageFileItem> OriginalFiles
+    {
+        get => _originalFiles;
+        set => SetField(ref _originalFiles, value);
+    }
+
+    public ImageFileItem? SelectedOriginalFile
+    {
+        get => _selectedOriginalFile;
+        set => SetField(ref _selectedOriginalFile, value);
     }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
