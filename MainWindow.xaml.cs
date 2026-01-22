@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -58,6 +59,7 @@ public partial class MainWindow : Window
     {
         _isInitialReview = false;
         _initialReviewFolder = null;
+        _viewModel.IsInitialReview = false;
         var originalFolder = SelectFolder("Select original images folder");
         if (string.IsNullOrWhiteSpace(originalFolder))
         {
@@ -103,6 +105,7 @@ public partial class MainWindow : Window
         }
 
         _isInitialReview = true;
+        _viewModel.IsInitialReview = true;
         _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolder);
 
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
@@ -404,7 +407,7 @@ public partial class MainWindow : Window
         target.Source = null;
         try
         {
-            target.Source = LoadBitmapImage(imagePath);
+            target.Source = _fileProcessor.LoadBitmapImage(imagePath);
         }
         catch (IOException ex)
         {

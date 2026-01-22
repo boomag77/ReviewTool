@@ -95,8 +95,8 @@
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start Initial Review..." Margin="6,0,0,0"
                             Focusable="False"
                             Click="StartInitialReview_Click" />     
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start Review..." Margin="6,0,0,0"
-                            Focusable="False"
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start Final Review..." Margin="6,0,0,0"
+                            Focusable="False" IsEnabled="False"
                             Click="StartReview_Click" />
                     
                 </StackPanel>
@@ -110,7 +110,18 @@
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="ReviewPreviewColumn">
+                    <ColumnDefinition.Style>
+                        <Style TargetType="ColumnDefinition">
+                            <Setter Property="Width" Value="*" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsInitialReview}" Value="True">
+                                    <Setter Property="Width" Value="0" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ColumnDefinition.Style>
+                </ColumnDefinition>
                 <ColumnDefinition x:Name="ActionsColumn">
                     <ColumnDefinition.Style>
                         <Style TargetType="ColumnDefinition">
@@ -126,7 +137,18 @@
             </Grid.ColumnDefinitions>
 
             <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding OriginalImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
-            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ReviewingImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ReviewingImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsInitialReview}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
 
             <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
@@ -137,6 +159,16 @@
 
             <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsInitialReview}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <Viewbox Stretch="Uniform">
                     <Image Source="{Binding ReviewingImagePreview}" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
                 </Viewbox>
