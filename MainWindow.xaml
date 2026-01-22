@@ -97,7 +97,7 @@
                             Click="StartInitialReview_Click" />     
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="{Binding FinalReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False" IsEnabled="False"
-                            Click="StartReview_Click" />
+                            Click="StartFinalReview_Click" />
                     
                 </StackPanel>
             </Grid>

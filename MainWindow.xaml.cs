@@ -43,11 +43,11 @@ public partial class MainWindow : Window
 
     }
 
-    private async void StartReview_Click(object sender, RoutedEventArgs e)
+    private async void StartFinalReview_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            await StartReviewAsync();
+            await StartFinalReviewAsync();
         }
         catch (OperationCanceledException)
         {
@@ -59,7 +59,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task StartReviewAsync()
+    private async Task StartFinalReviewAsync()
     {
         if (_isFinalReview)
         {
@@ -118,7 +118,7 @@ public partial class MainWindow : Window
     {
         if (_isInitialReview)
         {
-            FinishInitialReview();
+            await FinishInitialReviewAsync();
             return;
         }
 
@@ -149,8 +149,9 @@ public partial class MainWindow : Window
         FocusWindowForInputDeferred();
     }
 
-    private void FinishInitialReview()
+    private async Task FinishInitialReviewAsync()
     {
+        await PersistInitialReviewResultsAsync();
         ClearReviewState(clearProcessed: true);
         _isInitialReview = false;
         _initialReviewFolder = null;
@@ -233,6 +234,15 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (_isInitialReview)
+            {
+                SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Approved,
+                                               ImageFileItem.RejectReasonType.None,
+                                               null);
+                await NavigateImages(1);
+                return;
+            }
+
             await HandleOkAsync();
         }
         catch (Exception ex)
@@ -247,7 +257,11 @@ public partial class MainWindow : Window
         {
             if (_isInitialReview)
             {
-                await SaveInitialReviewRejectedAsync("_bo");
+                //await SaveInitialReviewRejectedAsync("_bo");
+                SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Rejected,
+                                               ImageFileItem.RejectReasonType.BadOriginal,
+                                               null);
+
                 await NavigateImages(1);
                 return;
             }
@@ -266,7 +280,11 @@ public partial class MainWindow : Window
         {
             if (_isInitialReview)
             {
-                await SaveInitialReviewRejectedAsync("_ct");
+                //await SaveInitialReviewRejectedAsync("_ct");
+                SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Rejected,
+                                               ImageFileItem.RejectReasonType.Overcutted,
+                                               null);
+
                 await NavigateImages(1);
                 return;
             }
@@ -340,42 +358,89 @@ public partial class MainWindow : Window
         //await UpdatePreviewImagesAsync();
     }
 
-    private async Task SaveInitialReviewCopyAsync(string suffix)
+    private void SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType status,
+                                                ImageFileItem.RejectReasonType rejectReason,
+                                                string? newName)
     {
-        if (string.IsNullOrWhiteSpace(_initialReviewFolder))
+        if (!_isInitialReview)
+        {
+            return;
+        }
+        var item = _viewModel.SelectedOriginalFile;
+        if (item is null && _originalFolderIndex.TryGetFilePathForIndex(_currentImageIndex, out var currentPath))
+        {
+            item = _viewModel.OriginalFiles.FirstOrDefault(candidate =>
+                string.Equals(candidate.FilePath, currentPath, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (item is null)
         {
             return;
         }
 
-        if (!_originalFolderIndex.TryGetFilePathForIndex(_currentImageIndex, out var originalPath))
+        if (newName is not null)
         {
-            return;
+            item.NewFileName = newName;
         }
 
-        await Task.Run(() =>
-        {
-            _fileProcessor.SaveFile(originalPath, p => p, _initialReviewFolder, p => _fileProcessor.BuildSuffixedFileName(p, suffix));
-        });
+        item.ReviewStatus = status;
+        item.RejectReason = rejectReason;
     }
 
-    private async Task SaveInitialReviewRejectedAsync(string suffix)
+    private async Task PersistInitialReviewResultsAsync()
     {
         if (string.IsNullOrWhiteSpace(_initialReviewFolder))
         {
             return;
         }
 
-        if (!_originalFolderIndex.TryGetFilePathForIndex(_currentImageIndex, out var originalPath))
-        {
-            return;
-        }
-
+        var items = _viewModel.OriginalFiles.ToList();
         await Task.Run(() =>
         {
             var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
-            _fileProcessor.SaveFile(originalPath, p => p, rejectedFolder);
-            _fileProcessor.SaveFile(originalPath, p => p, _initialReviewFolder, p => _fileProcessor.BuildSuffixedFileName(p, suffix));
+            foreach (var item in items)
+            {
+                switch (item.ReviewStatus)
+                {
+                    case ImageFileItem.ReviewStatusType.Pending:
+                        var skippedFolder = _fileProcessor.EnsureSkippedFolder(_initialReviewFolder);
+                        _fileProcessor.SaveFile(item.FilePath, p => p, skippedFolder);
+                        continue;
+
+                    case ImageFileItem.ReviewStatusType.Approved:
+                        var approvedFileName = BuildReviewedFileName(item.FilePath, item.NewFileName);
+                        _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => approvedFileName);
+                        continue;
+
+                    case ImageFileItem.ReviewStatusType.Rejected:
+                        var suffix = item.RejectReason switch
+                        {
+                            ImageFileItem.RejectReasonType.BadOriginal => "_bo",
+                            ImageFileItem.RejectReasonType.Overcutted => "_ct",
+                            _ => "_rejected",
+                        };
+
+                        _fileProcessor.SaveFile(item.FilePath, p => p, rejectedFolder);
+                        var rejectedFileName = BuildReviewedFileName(item.FilePath, item.NewFileName);
+                        var suffixed = _fileProcessor.BuildSuffixedFileName(rejectedFileName, suffix);
+                        _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => suffixed);
+                        continue;
+                    default:
+                        continue;
+                }
+            }
         });
+    }
+
+    private string BuildReviewedFileName(string sourcePath, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            return Path.GetFileName(sourcePath);
+        }
+
+        var ext = Path.GetExtension(sourcePath);
+        return Path.HasExtension(newName) ? newName : string.Concat(newName, ext);
     }
 
     private async Task NavigateImages(int delta)
@@ -400,7 +465,9 @@ public partial class MainWindow : Window
     {
         if (_isInitialReview)
         {
-            await SaveInitialReviewCopyAsync(string.Empty);
+            SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Approved,
+                                           ImageFileItem.RejectReasonType.None,
+                                           null);
         }
 
         await NavigateImages(1);

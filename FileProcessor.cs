@@ -31,6 +31,13 @@ public sealed class FileProcessor
         return rejectedFolder;
     }
 
+    public string EnsureSkippedFolder(string initialFolder)
+    {
+        var skippedFolder = Path.Combine(initialFolder, "Skipped");
+        EnsureDirectory(skippedFolder);
+        return skippedFolder;
+    }
+
     public void SaveFile<T>(T item, Func<T, string> sourcePathSelector, string destinationFolder, Func<T, string>? destinationNameSelector = null)
     {
         var sourcePath = sourcePathSelector(item);
