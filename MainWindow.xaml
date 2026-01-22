@@ -82,9 +82,9 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start preview..." Margin="6,0,0,0"
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start Review..." Margin="6,0,0,0"
                             Focusable="False"
-                            Click="StartPreview_Click" />
+                            Click="StartReview_Click" />
                 </StackPanel>
             </Grid>
         </Border>

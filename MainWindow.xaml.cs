@@ -122,7 +122,23 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void StartPreview_Click(object sender, RoutedEventArgs e)
+    private async void StartReview_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await StartReviewAsync();
+        }
+        catch (OperationCanceledException)
+        {
+
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task StartReviewAsync()
     {
         var originalFolder = SelectFolder("Select original images folder");
         if (string.IsNullOrWhiteSpace(originalFolder))
@@ -135,20 +151,41 @@ public partial class MainWindow : Window
         {
             return;
         }
-
-        await LoadFolderImagesAsync(originalFolder, isOriginal: true);
-        await LoadFolderImagesAsync(processedFolder, isOriginal: false);
+        await Task.WhenAll(
+                BuildFoldersIndexesAsync(originalFolder, isOriginal: true),
+                BuildFoldersIndexesAsync(processedFolder, isOriginal: false)
+            );
+        _currentImageIndex = 0;
+        await UpdatePreviewImagesAsync();
+        //await LoadFolderImagesAsync(originalFolder, isOriginal: true);
+        //await LoadFolderImagesAsync(processedFolder, isOriginal: false);
         FocusWindowForInputDeferred();
     }
 
-    private void NextImageCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+    private async void NextImageCommand_Executed(object sender, ExecutedRoutedEventArgs e)
     {
-        NavigateImages(1);
+        try
+        {
+           await NavigateImages(1);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error navigating to next image: {ex}");
+            //MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
-    private void PreviousImageCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+    private async void PreviousImageCommand_Executed(object sender, ExecutedRoutedEventArgs e)
     {
-        NavigateImages(-1);
+        try
+        {
+           await NavigateImages(-1);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error navigating to previous image: {ex}");
+            //MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void FocusWindowForInput()
@@ -176,7 +213,7 @@ public partial class MainWindow : Window
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
-    private async Task LoadFolderImagesAsync(string folder, bool isOriginal)
+    private async Task BuildFoldersIndexesAsync(string folder, bool isOriginal)
     {
         var index = isOriginal ? _originalFolderIndex : _processedFolderIndex;
         var cts = isOriginal ? _originalFolderIndexCts : _processedFolderIndexCts;
@@ -193,7 +230,7 @@ public partial class MainWindow : Window
 
         try
         {
-            await Task.Run(() => index.CreateAsync(folder, string.Empty, cts.Token));
+            await index.CreateAsync(folder, string.Empty, cts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -208,11 +245,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        _currentImageIndex = 0;
-        UpdatePreviewImages();
+        //_currentImageIndex = 0;
+        //await UpdatePreviewImagesAsync();
     }
 
-    private void NavigateImages(int delta)
+    private async Task NavigateImages(int delta)
     {
         var maxIndex = Math.Max(_originalFolderIndex.LastIndex, _processedFolderIndex.LastIndex);
         if (maxIndex < 0)
@@ -227,14 +264,49 @@ public partial class MainWindow : Window
         }
 
         _currentImageIndex = nextIndex;
-        UpdatePreviewImages();
+        await UpdatePreviewImagesAsync();
     }
 
-    private void UpdatePreviewImages()
+    private async Task UpdatePreviewImagesAsync()
     {
-        SetImageFromIndex(_originalFolderIndex, OriginalImage);
-        SetImageFromIndex(_processedFolderIndex, ProcessedImage);
+        var currIdx = _currentImageIndex;
+        var task1 = Task.Run(() => LoadBitmapForIndex(_originalFolderIndex, currIdx));
+        var task2 = Task.Run(() => LoadBitmapForIndex(_processedFolderIndex, currIdx));
+        var bitmaps = await Task.WhenAll(task1, task2);
+        if (currIdx != _currentImageIndex)
+        {
+            return;
+        }
+        OriginalImage.Source = bitmaps[0];
+        ProcessedImage.Source = bitmaps[1];
+        //SetImageFromIndex(_originalFolderIndex, OriginalImage);
+        //SetImageFromIndex(_processedFolderIndex, ProcessedImage);
+
         UpdatePreviewLabels();
+    }
+
+    private BitmapSource? LoadBitmapForIndex(CurrentFolderIndex index, int imageIndex)
+    {
+        if (!index.TryGetFilePathForIndex(imageIndex, out var imagePath))
+        {
+            return null;
+        }
+        try
+        {
+            var img = LoadBitmapImage(imagePath);
+            return img;
+        }
+        catch (IOException ex)
+        {
+            Debug.WriteLine($"Failed to load image: {ex.Message}");
+            //MessageBox.Show(this, $"Failed to load image:\n{ex.Message}", "Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Debug.WriteLine($"Failed to load image: {ex.Message}");
+            //MessageBox.Show(this, $"Failed to load image:\n{ex.Message}", "Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        return null;
     }
 
     private void UpdatePreviewLabels()
@@ -266,12 +338,12 @@ public partial class MainWindow : Window
         catch (IOException ex)
         {
             target.Source = null;
-            MessageBox.Show(this, $"Failed to load image:\n{ex.Message}", "Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            //MessageBox.Show(this, $"Failed to load image:\n{ex.Message}", "Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         catch (UnauthorizedAccessException ex)
         {
             target.Source = null;
-            MessageBox.Show(this, $"Failed to load image:\n{ex.Message}", "Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            //MessageBox.Show(this, $"Failed to load image:\n{ex.Message}", "Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
