@@ -82,12 +82,13 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start Initial Review..." Margin="6,0,0,0"
+                            Focusable="False"
+                            Click="StartInitialReview_Click" />     
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start Review..." Margin="6,0,0,0"
                             Focusable="False"
                             Click="StartReview_Click" />
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start Initial Review..." Margin="6,0,0,0"
-                            Focusable="False"
-                            Click="StartInitialReview_Click" />
+                    
                 </StackPanel>
             </Grid>
         </Border>
@@ -103,13 +104,13 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock x:Name="OriginalLabel" Grid.Row="0" Grid.Column="0" Text="Original 0/0" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
-            <TextBlock x:Name="ProcessedLabel" Grid.Row="0" Grid.Column="2" Text="Processed 0/0" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding OriginalImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
+            <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding ReviewingImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8" />
 
             <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
                 <Viewbox Stretch="Uniform">
-                    <Image x:Name="OriginalImage" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
+                    <Image Source="{Binding OriginalImagePreview}" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
                 </Viewbox>
             </Border>
 
@@ -118,7 +119,7 @@
             <Border Grid.Row="1" Grid.Column="2" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
                 <Viewbox Stretch="Uniform">
-                    <Image x:Name="ProcessedImage" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
+                    <Image Source="{Binding ReviewingImagePreview}" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
                 </Viewbox>
             </Border>
         </Grid>
