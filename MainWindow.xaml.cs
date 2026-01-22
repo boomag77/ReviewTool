@@ -7,6 +7,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
@@ -297,6 +298,26 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void FileNameTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        if (!_isInitialReview)
+        {
+            return;
+        }
+
+        SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Approved,
+                                       ImageFileItem.RejectReasonType.None,
+                                       null);
+        await NavigateImages(1);
+    }
+
     private void FocusWindowForInput()
     {
         Activate();
@@ -408,7 +429,13 @@ public partial class MainWindow : Window
                         continue;
 
                     case ImageFileItem.ReviewStatusType.Approved:
-                        var approvedFileName = BuildReviewedFileName(item.FilePath, item.NewFileName);
+                        var approvedFileName = item.NewFileName;
+                        if (string.IsNullOrWhiteSpace(_____))
+                        {
+                            _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder);
+                            continue;
+                        }
+                        approvedFileName = BuildReviewedFileName(item.FilePath, item.NewFileName);
                         _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => approvedFileName);
                         continue;
 
@@ -420,7 +447,8 @@ public partial class MainWindow : Window
                             _ => "_rejected",
                         };
 
-                        _fileProcessor.SaveFile(item.FilePath, p => p, rejectedFolder);
+                        var rejectedBaseName = BuildReviewedFileName(item.FilePath, item.NewFileName);
+                        _fileProcessor.SaveFile(item.FilePath, p => p, rejectedFolder, _ => rejectedBaseName);
                         var rejectedFileName = BuildReviewedFileName(item.FilePath, item.NewFileName);
                         var suffixed = _fileProcessor.BuildSuffixedFileName(rejectedFileName, suffix);
                         _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => suffixed);
@@ -488,6 +516,7 @@ public partial class MainWindow : Window
 
         UpdatePreviewLabels();
         UpdateSelectedOriginalFile();
+        FocusCurrentFileNameField();
     }
 
     private BitmapSource? LoadBitmapForIndex(CurrentFolderIndex index, int imageIndex)
@@ -572,6 +601,66 @@ public partial class MainWindow : Window
         _suppressFileSelection = true;
         _viewModel.SelectedOriginalFile = match;
         _suppressFileSelection = false;
+    }
+
+    private void FocusCurrentFileNameField()
+    {
+        if (!_isInitialReview)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(() =>
+            {
+                var item = _viewModel.SelectedOriginalFile;
+                if (item is null)
+                {
+                    return;
+                }
+
+                if (OriginalFilesList.ItemContainerGenerator.ContainerFromItem(item) is not ListBoxItem container)
+                {
+                    OriginalFilesList.UpdateLayout();
+                    container = OriginalFilesList.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem;
+                }
+
+                if (container is null)
+                {
+                    return;
+                }
+
+                var textBox = FindVisualChild<TextBox>(container);
+                if (textBox is null)
+                {
+                    return;
+                }
+
+                textBox.Focus();
+                textBox.SelectAll();
+            }));
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject root) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var descendent = FindVisualChild<T>(child);
+            if (descendent is not null)
+            {
+                return descendent;
+            }
+        }
+
+        return null;
     }
 
     private string BuildLabel(string name, CurrentFolderIndex index)

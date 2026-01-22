@@ -10,7 +10,7 @@
         Focusable="True"
         KeyboardNavigation.DirectionalNavigation="None">
     <Window.InputBindings>
-        <KeyBinding Key="Right" Command="{x:Static local:MainWindow.NextImageCommand}" />
+        <KeyBinding Key="Enter" Command="{x:Static local:MainWindow.NextImageCommand}" />
         <KeyBinding Key="Left" Command="{x:Static local:MainWindow.PreviousImageCommand}" />
         <KeyBinding Key="B" Command="{x:Static local:MainWindow.BadOriginalCommand}" />
         <KeyBinding Key="C" Command="{x:Static local:MainWindow.OvercuttedCommand}" />
@@ -175,7 +175,8 @@
                         </Style.Triggers>
                     </Style>
                 </Border.Style>
-                <ListBox ItemsSource="{Binding OriginalFiles}"
+                <ListBox x:Name="OriginalFilesList"
+                         ItemsSource="{Binding OriginalFiles}"
                          SelectedItem="{Binding SelectedOriginalFile, Mode=TwoWay}"
                          SelectionChanged="OriginalFiles_SelectionChanged"
                          Background="{StaticResource PipelineTextboxBackgroundBrush}"
@@ -203,6 +204,7 @@
                                          Margin="12,0,0,0"
                                          VerticalAlignment="Center"
                                          HorizontalAlignment="Stretch"
+                                         PreviewKeyDown="FileNameTextBox_PreviewKeyDown"
                                          Foreground="LightGray"
                                          Background="#2F3136"
                                          BorderBrush="{StaticResource PipelineCardBorderBrush}"
