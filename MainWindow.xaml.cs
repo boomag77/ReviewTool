@@ -16,8 +16,11 @@ public partial class MainWindow : Window
 {
     public static readonly RoutedCommand NextImageCommand = new();
     public static readonly RoutedCommand PreviousImageCommand = new();
+    public static readonly RoutedCommand BadOriginalCommand = new();
+    public static readonly RoutedCommand OvercuttedCommand = new();
 
     private readonly MainWindowViewModel _viewModel = new();
+    private readonly FileProcessor _fileProcessor = new();
 
     private readonly FrozenSet<string> ImageExts =
         new[] { ".bmp", ".gif", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp" }
@@ -28,6 +31,8 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _originalFolderIndexCts;
     private CancellationTokenSource? _processedFolderIndexCts;
     private int _currentImageIndex;
+    private bool _isInitialReview;
+    private string? _initialReviewFolder;
 
 
     public MainWindow()
@@ -58,6 +63,8 @@ public partial class MainWindow : Window
 
     private async Task StartReviewAsync()
     {
+        _isInitialReview = false;
+        _initialReviewFolder = null;
         var originalFolder = SelectFolder("Select original images folder");
         if (string.IsNullOrWhiteSpace(originalFolder))
         {
@@ -102,6 +109,9 @@ public partial class MainWindow : Window
             return;
         }
 
+        _isInitialReview = true;
+        _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolder);
+
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
         if (_originalFolderIndex.LastIndex < 0)
         {
@@ -119,7 +129,7 @@ public partial class MainWindow : Window
     {
         try
         {
-           await NavigateImages(1);
+           await HandleOkAsync();
         }
         catch (Exception ex)
         {
@@ -141,11 +151,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BadOriginalCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        BadOriginal_Click(sender, new RoutedEventArgs());
+    }
+
+    private void OvercuttedCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        Overcutted_Click(sender, new RoutedEventArgs());
+    }
+
     private async void OkReview_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            await NavigateImages(1);
+            await HandleOkAsync();
         }
         catch (Exception ex)
         {
@@ -153,14 +173,42 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BadOriginal_Click(object sender, RoutedEventArgs e)
+    private async void BadOriginal_Click(object sender, RoutedEventArgs e)
     {
-        Debug.WriteLine("Bad original clicked.");
+        try
+        {
+            if (_isInitialReview)
+            {
+                await SaveInitialReviewRejectedAsync("_bo");
+                await NavigateImages(1);
+                return;
+            }
+
+            Debug.WriteLine("Bad original clicked.");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error handling bad original: {ex}");
+        }
     }
 
-    private void Overcutted_Click(object sender, RoutedEventArgs e)
+    private async void Overcutted_Click(object sender, RoutedEventArgs e)
     {
-        Debug.WriteLine("Overcutted clicked.");
+        try
+        {
+            if (_isInitialReview)
+            {
+                await SaveInitialReviewRejectedAsync("_ct");
+                await NavigateImages(1);
+                return;
+            }
+
+            Debug.WriteLine("Overcutted clicked.");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error handling overcutted: {ex}");
+        }
     }
 
     private void FocusWindowForInput()
@@ -224,6 +272,44 @@ public partial class MainWindow : Window
         //await UpdatePreviewImagesAsync();
     }
 
+    private async Task SaveInitialReviewCopyAsync(string suffix)
+    {
+        if (string.IsNullOrWhiteSpace(_initialReviewFolder))
+        {
+            return;
+        }
+
+        if (!_originalFolderIndex.TryGetFilePathForIndex(_currentImageIndex, out var originalPath))
+        {
+            return;
+        }
+
+        await Task.Run(() =>
+        {
+            _fileProcessor.SaveFile(originalPath, p => p, _initialReviewFolder, p => _fileProcessor.BuildSuffixedFileName(p, suffix));
+        });
+    }
+
+    private async Task SaveInitialReviewRejectedAsync(string suffix)
+    {
+        if (string.IsNullOrWhiteSpace(_initialReviewFolder))
+        {
+            return;
+        }
+
+        if (!_originalFolderIndex.TryGetFilePathForIndex(_currentImageIndex, out var originalPath))
+        {
+            return;
+        }
+
+        await Task.Run(() =>
+        {
+            var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
+            _fileProcessor.SaveFile(originalPath, p => p, rejectedFolder);
+            _fileProcessor.SaveFile(originalPath, p => p, _initialReviewFolder, p => _fileProcessor.BuildSuffixedFileName(p, suffix));
+        });
+    }
+
     private async Task NavigateImages(int delta)
     {
         var maxIndex = Math.Max(_originalFolderIndex.LastIndex, _processedFolderIndex.LastIndex);
@@ -240,6 +326,16 @@ public partial class MainWindow : Window
 
         _currentImageIndex = nextIndex;
         await UpdatePreviewImagesAsync();
+    }
+
+    private async Task HandleOkAsync()
+    {
+        if (_isInitialReview)
+        {
+            await SaveInitialReviewCopyAsync(string.Empty);
+        }
+
+        await NavigateImages(1);
     }
 
     private async Task UpdatePreviewImagesAsync()

@@ -12,10 +12,14 @@
     <Window.InputBindings>
         <KeyBinding Key="Right" Command="{x:Static local:MainWindow.NextImageCommand}" />
         <KeyBinding Key="Left" Command="{x:Static local:MainWindow.PreviousImageCommand}" />
+        <KeyBinding Key="B" Command="{x:Static local:MainWindow.BadOriginalCommand}" />
+        <KeyBinding Key="C" Command="{x:Static local:MainWindow.OvercuttedCommand}" />
     </Window.InputBindings>
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static local:MainWindow.NextImageCommand}" Executed="NextImageCommand_Executed" />
         <CommandBinding Command="{x:Static local:MainWindow.PreviousImageCommand}" Executed="PreviousImageCommand_Executed" />
+        <CommandBinding Command="{x:Static local:MainWindow.BadOriginalCommand}" Executed="BadOriginalCommand_Executed" />
+        <CommandBinding Command="{x:Static local:MainWindow.OvercuttedCommand}" Executed="OvercuttedCommand_Executed" />
     </Window.CommandBindings>
     <Window.Resources>
         <SolidColorBrush x:Key="PipelineCardBackgroundBrush" Color="#2F3136"/>
