@@ -85,6 +85,9 @@
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start Review..." Margin="6,0,0,0"
                             Focusable="False"
                             Click="StartReview_Click" />
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Start Initial Review..." Margin="6,0,0,0"
+                            Focusable="False"
+                            Click="StartInitialReview_Click" />
                 </StackPanel>
             </Grid>
         </Border>

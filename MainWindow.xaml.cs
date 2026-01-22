@@ -157,8 +157,43 @@ public partial class MainWindow : Window
             );
         _currentImageIndex = 0;
         await UpdatePreviewImagesAsync();
-        //await LoadFolderImagesAsync(originalFolder, isOriginal: true);
-        //await LoadFolderImagesAsync(processedFolder, isOriginal: false);
+        FocusWindowForInputDeferred();
+    }
+
+    private async void StartInitialReview_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await StartInitialReviewAsync();
+        }
+        catch (OperationCanceledException)
+        {
+
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task StartInitialReviewAsync()
+    {
+        var originalFolder = SelectFolder("Select original images folder");
+        if (string.IsNullOrWhiteSpace(originalFolder))
+        {
+            return;
+        }
+
+        await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
+        if (_originalFolderIndex.LastIndex < 0)
+        {
+            ResetProcessedIndex();
+            return;
+        }
+
+        ResetProcessedIndex();
+        _currentImageIndex = 0;
+        await UpdatePreviewImagesAsync();
         FocusWindowForInputDeferred();
     }
 
@@ -315,6 +350,15 @@ public partial class MainWindow : Window
         ProcessedLabel.Text = BuildLabel("Processed", _processedFolderIndex);
     }
 
+    private void ResetProcessedIndex()
+    {
+        _processedFolderIndexCts?.Cancel();
+        _processedFolderIndexCts = null;
+        _processedFolderIndex.ClearIndex();
+        ProcessedImage.Source = null;
+        UpdatePreviewLabels();
+    }
+
     private string BuildLabel(string name, CurrentFolderIndex index)
     {
         var count = Math.Max(0, index.LastIndex + 1);
@@ -429,6 +473,11 @@ public partial class MainWindow : Window
                 _cachedFileIndex = -1;
                 _cachedDirectory = string.Empty;
             }
+        }
+
+        public void ClearIndex()
+        {
+            Clear();
         }
 
         public async Task CreateAsync(string folderPath, string filePath, CancellationToken token)
