@@ -177,13 +177,41 @@
                 </Border.Style>
                 <ListBox ItemsSource="{Binding OriginalFiles}"
                          SelectedItem="{Binding SelectedOriginalFile, Mode=TwoWay}"
-                         DisplayMemberPath="FileName"
                          SelectionChanged="OriginalFiles_SelectionChanged"
                          Background="{StaticResource PipelineTextboxBackgroundBrush}"
                          Foreground="LightGray"
                          Opacity="0.9"
                          BorderThickness="0"
-                         Padding="6" />
+                         Padding="6"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding FileName}" VerticalAlignment="Center"
+                                           Foreground="LightGray"
+                                           Margin="0,0,12,0" />
+                                <TextBox Grid.Column="1" Text="{Binding NewFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="12,0,0,0"
+                                         VerticalAlignment="Center"
+                                         HorizontalAlignment="Stretch"
+                                         Foreground="LightGray"
+                                         Background="#2F3136"
+                                         BorderBrush="{StaticResource PipelineCardBorderBrush}"
+                                         BorderThickness="1"
+                                         Padding="4,2" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </Border>
 
             <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource PipelineTextboxBackgroundBrush}"
