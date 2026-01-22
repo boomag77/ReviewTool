@@ -1,12 +1,9 @@
 using Microsoft.Win32;
-using System.Collections.Frozen;
 using System.Diagnostics;
 using System.IO;
-using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
@@ -21,10 +18,6 @@ public partial class MainWindow : Window
 
     private readonly MainWindowViewModel _viewModel = new();
     private readonly FileProcessor _fileProcessor = new();
-
-    private readonly FrozenSet<string> ImageExts =
-        new[] { ".bmp", ".gif", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp" }
-            .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     private readonly CurrentFolderIndex _originalFolderIndex;
     private readonly CurrentFolderIndex _processedFolderIndex;
@@ -362,7 +355,7 @@ public partial class MainWindow : Window
         }
         try
         {
-            var img = LoadBitmapImage(imagePath);
+            var img = _fileProcessor.LoadBitmapImage(imagePath);
             return img;
         }
         catch (IOException ex)
@@ -522,7 +515,7 @@ public partial class MainWindow : Window
             await Task.Run(() =>
             {
                 var files = Directory.EnumerateFiles(folderPath)
-                                 .Where(f => _owner.ImageExts.Contains(Path.GetExtension(f)))
+                                 .Where(_owner._fileProcessor.IsSupportedImage)
                                  .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
                 var tmpFolderIndex = new Dictionary<int, string>();
                 var tmpFolderIndexByPath = new Dictionary<string, int>();
@@ -548,73 +541,4 @@ public partial class MainWindow : Window
         }
     }
 
-    private static BitmapSource LoadBitmapImage(string path)
-    {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-        var frame = decoder.Frames[0];
-        var oriented = ApplyExifOrientation(frame);
-        oriented.Freeze();
-        return oriented;
-    }
-
-    private static BitmapSource ApplyExifOrientation(BitmapFrame frame)
-    {
-        if (frame.Metadata is not BitmapMetadata metadata)
-        {
-            return frame;
-        }
-
-        ushort orientation;
-        try
-        {
-            if (!metadata.ContainsQuery("/app1/ifd/{ushort=274}"))
-            {
-                return frame;
-            }
-
-            var orientationObj = metadata.GetQuery("/app1/ifd/{ushort=274}");
-            if (orientationObj is null)
-            {
-                return frame;
-            }
-
-            orientation = Convert.ToUInt16(orientationObj);
-        }
-        catch
-        {
-            return frame;
-        }
-
-        var width = frame.PixelWidth / 2d;
-        var height = frame.PixelHeight / 2d;
-
-        Transform? transform = orientation switch
-        {
-            2 => new ScaleTransform(-1, 1, width, height),
-            3 => new RotateTransform(180, width, height),
-            4 => new ScaleTransform(1, -1, width, height),
-            5 => new TransformGroup
-            {
-                Children =
-                {
-                    new RotateTransform(90, width, height),
-                    new ScaleTransform(-1, 1, width, height),
-                },
-            },
-            6 => new RotateTransform(90, width, height),
-            7 => new TransformGroup
-            {
-                Children =
-                {
-                    new RotateTransform(270, width, height),
-                    new ScaleTransform(-1, 1, width, height),
-                },
-            },
-            8 => new RotateTransform(270, width, height),
-            _ => null,
-        };
-
-        return transform is null ? frame : new TransformedBitmap(frame, transform);
-    }
 }
