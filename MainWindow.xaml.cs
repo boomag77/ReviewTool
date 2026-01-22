@@ -141,6 +141,28 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OkReview_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await NavigateImages(1);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error navigating from OK: {ex}");
+        }
+    }
+
+    private void BadOriginal_Click(object sender, RoutedEventArgs e)
+    {
+        Debug.WriteLine("Bad original clicked.");
+    }
+
+    private void Overcutted_Click(object sender, RoutedEventArgs e)
+    {
+        Debug.WriteLine("Overcutted clicked.");
+    }
+
     private void FocusWindowForInput()
     {
         Activate();
