@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _processedFolderIndexCts;
     private int _currentImageIndex;
     private bool _isInitialReview;
+    private bool _isFinalReview;
     private string? _initialReviewFolder;
     private bool _suppressFileSelection;
 
@@ -60,20 +61,32 @@ public partial class MainWindow : Window
 
     private async Task StartReviewAsync()
     {
+        if (_isFinalReview)
+        {
+            FinishFinalReview();
+            return;
+        }
+
         _isInitialReview = false;
+        _isFinalReview = true;
         _initialReviewFolder = null;
         _viewModel.IsInitialReview = false;
         _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>();
         _viewModel.SelectedOriginalFile = null;
+        _viewModel.FinalReviewButtonText = "Finish Final Review";
         var originalFolder = SelectFolder("Select original images folder");
         if (string.IsNullOrWhiteSpace(originalFolder))
         {
+            _isFinalReview = false;
+            _viewModel.FinalReviewButtonText = "Start Final Review...";
             return;
         }
 
         var processedFolder = SelectFolder("Select processed images folder");
         if (string.IsNullOrWhiteSpace(processedFolder))
         {
+            _isFinalReview = false;
+            _viewModel.FinalReviewButtonText = "Start Final Review...";
             return;
         }
         await Task.WhenAll(
@@ -103,6 +116,12 @@ public partial class MainWindow : Window
 
     private async Task StartInitialReviewAsync()
     {
+        if (_isInitialReview)
+        {
+            FinishInitialReview();
+            return;
+        }
+
         var originalFolder = SelectFolder("Select original images folder");
         if (string.IsNullOrWhiteSpace(originalFolder))
         {
@@ -110,7 +129,10 @@ public partial class MainWindow : Window
         }
 
         _isInitialReview = true;
+        _isFinalReview = false;
         _viewModel.IsInitialReview = true;
+        _viewModel.InitialReviewButtonText = "Finish Initial Review";
+        _viewModel.FinalReviewButtonText = "Start Final Review...";
         _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolder);
 
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
@@ -125,6 +147,24 @@ public partial class MainWindow : Window
         _currentImageIndex = 0;
         await UpdatePreviewImagesAsync();
         FocusWindowForInputDeferred();
+    }
+
+    private void FinishInitialReview()
+    {
+        ClearReviewState(clearProcessed: true);
+        _isInitialReview = false;
+        _initialReviewFolder = null;
+        _viewModel.IsInitialReview = false;
+        _viewModel.InitialReviewButtonText = "Start Initial Review...";
+        MessageBox.Show(this, "Initial Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void FinishFinalReview()
+    {
+        ClearReviewState(clearProcessed: true);
+        _isFinalReview = false;
+        _viewModel.FinalReviewButtonText = "Start Final Review...";
+        MessageBox.Show(this, "Final Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private async void NextImageCommand_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -419,6 +459,23 @@ public partial class MainWindow : Window
         _processedFolderIndexCts = null;
         _processedFolderIndex.ClearIndex();
         _viewModel.ReviewingImagePreview = null;
+        UpdatePreviewLabels();
+    }
+
+    private void ClearReviewState(bool clearProcessed)
+    {
+        _originalFolderIndexCts?.Cancel();
+        _originalFolderIndexCts = null;
+        _originalFolderIndex.ClearIndex();
+        if (clearProcessed)
+        {
+            ResetProcessedIndex();
+        }
+        _currentImageIndex = 0;
+        _viewModel.OriginalImagePreview = null;
+        _viewModel.ReviewingImagePreview = null;
+        _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>();
+        _viewModel.SelectedOriginalFile = null;
         UpdatePreviewLabels();
     }
 
