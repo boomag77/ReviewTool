@@ -630,8 +630,6 @@ public partial class MainWindow : Window
         if (s.IsEmpty) return false;
 
         int i = 0;
-        // ÃÂµÃ‘ÂÃÂ»ÃÂ¸ ÃÂ½Ã‘Æ’ÃÂ¶ÃÂ½ÃÂ¾ ÃÂ¿ÃÂ¾ÃÂ´ÃÂ´ÃÂµÃ‘â‚¬ÃÂ¶ÃÂ°Ã‘â€šÃ‘Å’ ÃÂ¿Ã‘â‚¬ÃÂ¾ÃÂ±ÃÂµÃÂ»Ã‘â€¹ ÃÂ² ÃÂ½ÃÂ°Ã‘â€¡ÃÂ°ÃÂ»ÃÂµ Ã¢â‚¬â€ Ã‘â‚¬ÃÂ°Ã‘ÂÃÂºÃÂ¾ÃÂ¼ÃÂ¼ÃÂµÃÂ½Ã‘â€šÃÂ¸Ã‘â‚¬Ã‘Æ’ÃÂ¹:
-        // while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
 
         while (i < s.Length && char.IsDigit(s[i]))
             i++;
@@ -639,7 +637,6 @@ public partial class MainWindow : Window
         prefixLen = i;
         if (prefixLen == 0) return false;
 
-        // ÃÅ¸ÃÂ°Ã‘â‚¬Ã‘ÂÃÂ¸ÃÂ¼ Ã‘â‚¬ÃÂ¾ÃÂ²ÃÂ½ÃÂ¾ prefix (ÃÂ±ÃÂµÃÂ· ÃÂ²Ã‘â€¹ÃÂ´ÃÂµÃÂ»ÃÂµÃÂ½ÃÂ¸Ã‘Â ÃÂ¿ÃÂ¾ÃÂ´Ã‘ÂÃ‘â€šÃ‘â‚¬ÃÂ¾ÃÂºÃÂ¸)
         return int.TryParse(s.Slice(0, prefixLen), out value);
     }
 
@@ -650,7 +647,7 @@ public partial class MainWindow : Window
             return new ReviewStat();
         }
         int notReviewed = 0;
-        List<int> approvedPages = new();
+        HashSet<int> approvedPages = new();
         List<int> badOriginalPages = new();
         List<int> overcuttedPages = new();
         List<int> savedPages = new();
@@ -708,10 +705,12 @@ public partial class MainWindow : Window
 
             }
         });
+        badOriginalPages.RemoveAll(approvedPages.Contains);
+        overcuttedPages.RemoveAll(approvedPages.Contains);
         return new ReviewStat
         {
             notReviewed = notReviewed,
-            ApprovedPages = approvedPages,
+            ApprovedPages = approvedPages.ToList(),
             BadOriginalPages = badOriginalPages,
             OvercuttedPages = overcuttedPages,
             SavedPages = savedPages
