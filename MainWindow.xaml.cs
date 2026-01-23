@@ -1,9 +1,10 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -64,6 +65,12 @@ public partial class MainWindow : Window
         _originalFolderIndex = new CurrentFolderIndex(this);
         _processedFolderIndex = new CurrentFolderIndex(this);
 
+    }
+
+    private int TotalImagesToReview
+    {
+        get => field;
+        set => field = value;
     }
 
     private async void StartFinalReview_Click(object sender, RoutedEventArgs e)
@@ -156,6 +163,26 @@ public partial class MainWindow : Window
         _viewModel.IsInitialReview = true;
         _viewModel.InitialReviewButtonText = "Finish Initial Review";
         _viewModel.FinalReviewButtonText = "Start Final Review...";
+        var initialFolderPath = _fileProcessor.GetInitialReviewFolderPath(originalFolder);
+        if (Directory.Exists(initialFolderPath))
+        {
+            var folderName = Path.GetFileName(initialFolderPath);
+            var result = MessageBox.Show(this,
+                $"{folderName} already exists. Do you want to do review {folderName} again?",
+                "Initial Review",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (result != MessageBoxResult.Yes)
+            {
+                _isInitialReview = false;
+                _viewModel.IsInitialReview = false;
+                _viewModel.InitialReviewButtonText = "Start Initial Review...";
+                return;
+            }
+
+            _fileProcessor.ClearDirectory(initialFolderPath);
+        }
+
         _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolder);
         _fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
         _suggestedNames.Clear();
@@ -184,10 +211,10 @@ public partial class MainWindow : Window
             int prev = a[i - 1];
             int cur = a[i];
 
-            // если есть duplicates или массив не строго возрастающий — пропускаем "плохие" пары
+            // ÃÂµÃ‘ÂÃÂ»ÃÂ¸ ÃÂµÃ‘ÂÃ‘â€šÃ‘Å’ duplicates ÃÂ¸ÃÂ»ÃÂ¸ ÃÂ¼ÃÂ°Ã‘ÂÃ‘ÂÃÂ¸ÃÂ² ÃÂ½ÃÂµ Ã‘ÂÃ‘â€šÃ‘â‚¬ÃÂ¾ÃÂ³ÃÂ¾ ÃÂ²ÃÂ¾ÃÂ·Ã‘â‚¬ÃÂ°Ã‘ÂÃ‘â€šÃÂ°Ã‘Å½Ã‘â€°ÃÂ¸ÃÂ¹ Ã¢â‚¬â€ ÃÂ¿Ã‘â‚¬ÃÂ¾ÃÂ¿Ã‘Æ’Ã‘ÂÃÂºÃÂ°ÃÂµÃÂ¼ "ÃÂ¿ÃÂ»ÃÂ¾Ã‘â€¦ÃÂ¸ÃÂµ" ÃÂ¿ÃÂ°Ã‘â‚¬Ã‘â€¹
             if (cur <= prev) continue;
 
-            // добавляем prev+1 ... cur-1
+            // ÃÂ´ÃÂ¾ÃÂ±ÃÂ°ÃÂ²ÃÂ»Ã‘ÂÃÂµÃÂ¼ prev+1 ... cur-1
             for (int x = prev + 1; x < cur; x++)
                 missing.Add(x);
         }
@@ -208,6 +235,7 @@ public partial class MainWindow : Window
             
 
         }
+        var totalImagesToReview = TotalImagesToReview;
         ClearReviewState(clearProcessed: true);
         _isInitialReview = false;
         _initialReviewFolder = null;
@@ -215,20 +243,61 @@ public partial class MainWindow : Window
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
-        var badOriginalPagesNumbers = string.Join(", ", taskResult.BadOriginalPages);
-        var overcuttedPagesNumbers = string.Join(", ", taskResult.OvercuttedPages);
-        var statString = $"Not Reviewed: {taskResult.notReviewed}\n" +
-                         $"Approved: {taskResult.ApprovedPages.Count}\n" +
-                         $"Bad Originals: {badOriginalPagesNumbers}\n" +
-                         $"Overcutted: {overcuttedPagesNumbers}";
+        var reviewedCount = totalImagesToReview - taskResult.notReviewed;
+        double sourceQuality = Math.Round((double)taskResult.ApprovedPages.Count / reviewedCount, 2) * 100;
+        bool isSuccessedReview = true;
+        List<string> reportRows = new(7);
+
+        reportRows.Add($"Total images: {totalImagesToReview}\n");
+        reportRows.Add($"Approved: {taskResult.ApprovedPages.Count}\n\n");
+        if (taskResult.notReviewed > 0)
+        {
+            isSuccessedReview = false;
+            reportRows.Add($"Not reviewed: {taskResult.notReviewed}\n\n");
+        }
+        if (taskResult.BadOriginalPages.Count > 0)
+        {
+            isSuccessedReview = false;
+            var badOriginalPagesNumbers = string.Join(", ", taskResult.BadOriginalPages);
+            reportRows.Add($"Bad Originals ({taskResult.BadOriginalPages.Count}): {badOriginalPagesNumbers}\n\n");
+        }
+        if (taskResult.OvercuttedPages.Count > 0)
+        {
+            isSuccessedReview = false;
+            var overcuttedPagesNumbers = string.Join(", ", taskResult.OvercuttedPages);
+            reportRows.Add($"Overcutted ({taskResult.OvercuttedPages.Count}): {overcuttedPagesNumbers}\n\n");
+        }
         if (missingPages.Count > 0)
         {
-            var missingList = string.Join(", ", missingPages);
-            statString += $"\nMissing Pages: {missingList}";
-            MessageBox.Show(this, $"Initial Review Finished.\n{statString}", "Missing Pages", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            isSuccessedReview = false;
+            var missingPagesString = string.Join(", ", missingPages);
+            reportRows.Add($"Missing pages ({missingPages.Count}): {missingPagesString}\n\n");
         }
-        MessageBox.Show(this, $"Initial Review Finished\n{statString}", "Missing Pages", MessageBoxButton.OK, MessageBoxImage.Information);
+        reportRows.Add($"Estimated source images quality: {sourceQuality}");
+
+        string statString = BuildReportMessage(reportRows);
+
+        var messageBoxImage = isSuccessedReview ? MessageBoxImage.Information : MessageBoxImage.Warning;
+        
+        MessageBox.Show(this, $"Initial Review Finished:\n\n{statString}", "Review report", MessageBoxButton.OK, messageBoxImage);
+    }
+
+    private static string BuildReportMessage(IReadOnlyList<string> reportRows)
+    {
+        if (reportRows == null || reportRows.Count == 0)
+            return string.Empty;
+
+        // ÃÅ“ÃÂ¾ÃÂ¶ÃÂ½ÃÂ¾ ÃÂ¿Ã‘â‚¬ÃÂ¸ÃÂºÃÂ¸ÃÂ½Ã‘Æ’Ã‘â€šÃ‘Å’ capacity, Ã‘â€¡Ã‘â€šÃÂ¾ÃÂ±Ã‘â€¹ Ã‘â‚¬ÃÂµÃÂ¶ÃÂµ Ã‘â‚¬ÃÂ¾Ã‘Â StringBuilder
+        int totalLen = 0;
+        for (int i = 0; i < reportRows.Count; i++)
+            totalLen += reportRows[i]?.Length ?? 0;
+
+        var sb = new StringBuilder(totalLen);
+
+        for (int i = 0; i < reportRows.Count; i++)
+            sb.Append(reportRows[i]);
+
+        return sb.ToString();
     }
 
 
@@ -561,7 +630,7 @@ public partial class MainWindow : Window
         if (s.IsEmpty) return false;
 
         int i = 0;
-        // если нужно поддержать пробелы в начале — раскомментируй:
+        // ÃÂµÃ‘ÂÃÂ»ÃÂ¸ ÃÂ½Ã‘Æ’ÃÂ¶ÃÂ½ÃÂ¾ ÃÂ¿ÃÂ¾ÃÂ´ÃÂ´ÃÂµÃ‘â‚¬ÃÂ¶ÃÂ°Ã‘â€šÃ‘Å’ ÃÂ¿Ã‘â‚¬ÃÂ¾ÃÂ±ÃÂµÃÂ»Ã‘â€¹ ÃÂ² ÃÂ½ÃÂ°Ã‘â€¡ÃÂ°ÃÂ»ÃÂµ Ã¢â‚¬â€ Ã‘â‚¬ÃÂ°Ã‘ÂÃÂºÃÂ¾ÃÂ¼ÃÂ¼ÃÂµÃÂ½Ã‘â€šÃÂ¸Ã‘â‚¬Ã‘Æ’ÃÂ¹:
         // while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
 
         while (i < s.Length && char.IsDigit(s[i]))
@@ -570,7 +639,7 @@ public partial class MainWindow : Window
         prefixLen = i;
         if (prefixLen == 0) return false;
 
-        // Парсим ровно prefix (без выделения подстроки)
+        // ÃÅ¸ÃÂ°Ã‘â‚¬Ã‘ÂÃÂ¸ÃÂ¼ Ã‘â‚¬ÃÂ¾ÃÂ²ÃÂ½ÃÂ¾ prefix (ÃÂ±ÃÂµÃÂ· ÃÂ²Ã‘â€¹ÃÂ´ÃÂµÃÂ»ÃÂµÃÂ½ÃÂ¸Ã‘Â ÃÂ¿ÃÂ¾ÃÂ´Ã‘ÂÃ‘â€šÃ‘â‚¬ÃÂ¾ÃÂºÃÂ¸)
         return int.TryParse(s.Slice(0, prefixLen), out value);
     }
 
@@ -739,6 +808,7 @@ public partial class MainWindow : Window
     {
         _viewModel.OriginalImageLabel = BuildLabel("Original", _originalFolderIndex);
         _viewModel.ReviewingImageLabel = BuildLabel("Processed", _processedFolderIndex);
+        TotalImagesToReview = Math.Max(0, _originalFolderIndex.LastIndex + 1);
     }
 
     private void ResetProcessedIndex()

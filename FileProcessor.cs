@@ -13,13 +13,18 @@ public sealed class FileProcessor
 
     public string EnsureInitialReviewFolder(string originalFolder)
     {
+        var initialFolder = GetInitialReviewFolderPath(originalFolder);
+        EnsureDirectory(initialFolder);
+        return initialFolder;
+    }
+
+    public string GetInitialReviewFolderPath(string originalFolder)
+    {
         var trimmed = Path.TrimEndingDirectorySeparator(originalFolder);
         var folderName = Path.GetFileName(trimmed);
         var parent = Path.GetDirectoryName(trimmed);
         var initialName = $"{folderName}_IR";
-        var initialFolder = string.IsNullOrWhiteSpace(parent) ? initialName : Path.Combine(parent, initialName);
-        EnsureDirectory(initialFolder);
-        return initialFolder;
+        return string.IsNullOrWhiteSpace(parent) ? initialName : Path.Combine(parent, initialName);
     }
 
     public string EnsureRejectedFolder(string initialFolder)
@@ -78,6 +83,26 @@ public sealed class FileProcessor
     private void EnsureDirectory(string path)
     {
         Directory.CreateDirectory(path);
+    }
+
+    public void ClearDirectory(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.GetFiles(path))
+        {
+            File.SetAttributes(file, FileAttributes.Normal);
+            File.Delete(file);
+        }
+
+        foreach (var dir in Directory.GetDirectories(path))
+        {
+            var info = new DirectoryInfo(dir) { Attributes = FileAttributes.Normal };
+            info.Delete(true);
+        }
     }
 
     private BitmapSource ApplyExifOrientation(BitmapFrame frame)
