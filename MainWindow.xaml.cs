@@ -1,10 +1,9 @@
-using Microsoft.Win32;
-using System.Collections.Generic;
+﻿using Microsoft.Win32;
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -17,6 +16,15 @@ namespace ReviewTool;
 
 public partial class MainWindow : Window
 {
+    private struct ReviewStat
+    {
+        public int notReviewed;
+        public List<int> ApprovedPages;
+        public List<int> BadOriginalPages;
+        public List<int> OvercuttedPages;
+        public List<int> SavedPages;
+    }
+
     public static readonly RoutedCommand NextImageCommand = new();
     public static readonly RoutedCommand PreviousImageCommand = new();
     public static readonly RoutedCommand BadOriginalCommand = new();
@@ -44,7 +52,7 @@ public partial class MainWindow : Window
     private int? _lastSuggestedNumber;
     private readonly Dictionary<ImageFileItem, string> _suggestedNames = new();
 
-    private readonly FileNameBuilder _fileNameBuilder;  
+    private readonly FileNameBuilder _fileNameBuilder;
 
     public MainWindow()
     {
@@ -166,9 +174,40 @@ public partial class MainWindow : Window
         FocusWindowForInputDeferred();
     }
 
+    private static List<int> CollectMissing(ReadOnlySpan<int> a)
+    {
+        var missing = new List<int>();
+        if (a == null || a.Length < 2) return missing;
+
+        for (int i = 1; i < a.Length; i++)
+        {
+            int prev = a[i - 1];
+            int cur = a[i];
+
+            // если есть duplicates или массив не строго возрастающий — пропускаем "плохие" пары
+            if (cur <= prev) continue;
+
+            // добавляем prev+1 ... cur-1
+            for (int x = prev + 1; x < cur; x++)
+                missing.Add(x);
+        }
+
+        return missing;
+    }
+
     private async Task FinishInitialReviewAsync()
     {
-        await PersistInitialReviewResultsAsync();
+        ReviewStat taskResult = await PersistInitialReviewResultsAsync();
+        var missingPages = new List<int>();
+        if (taskResult.SavedPages.Count > 0)
+        {
+            var savedPages = taskResult.SavedPages;
+            savedPages.Sort();
+            ReadOnlySpan<int> savedPagesSpan = CollectionsMarshal.AsSpan(savedPages);
+            missingPages = CollectMissing(savedPagesSpan);
+            
+
+        }
         ClearReviewState(clearProcessed: true);
         _isInitialReview = false;
         _initialReviewFolder = null;
@@ -176,8 +215,22 @@ public partial class MainWindow : Window
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
-        MessageBox.Show(this, "Initial Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
+        var badOriginalPagesNumbers = string.Join(", ", taskResult.BadOriginalPages);
+        var overcuttedPagesNumbers = string.Join(", ", taskResult.OvercuttedPages);
+        var statString = $"Not Reviewed: {taskResult.notReviewed}\n" +
+                         $"Approved: {taskResult.ApprovedPages.Count}\n" +
+                         $"Bad Originals: {badOriginalPagesNumbers}\n" +
+                         $"Overcutted: {overcuttedPagesNumbers}";
+        if (missingPages.Count > 0)
+        {
+            var missingList = string.Join(", ", missingPages);
+            statString += $"\nMissing Pages: {missingList}";
+            MessageBox.Show(this, $"Initial Review Finished.\n{statString}", "Missing Pages", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        MessageBox.Show(this, $"Initial Review Finished\n{statString}", "Missing Pages", MessageBoxButton.OK, MessageBoxImage.Information);
     }
+
 
     private void FinishFinalReview()
     {
@@ -191,7 +244,7 @@ public partial class MainWindow : Window
     {
         try
         {
-           await HandleOkAsync();
+            await HandleOkAsync();
         }
         catch (Exception ex)
         {
@@ -204,7 +257,7 @@ public partial class MainWindow : Window
     {
         try
         {
-           await NavigateImages(-1);
+            await NavigateImages(-1);
         }
         catch (Exception ex)
         {
@@ -501,28 +554,61 @@ public partial class MainWindow : Window
         item.RejectReason = rejectReason;
     }
 
-    private async Task PersistInitialReviewResultsAsync()
+    private static bool TryGetNumericPrefix(ReadOnlySpan<char> s, out int value, out int prefixLen)
+    {
+        value = 0;
+        prefixLen = 0;
+        if (s.IsEmpty) return false;
+
+        int i = 0;
+        // если нужно поддержать пробелы в начале — раскомментируй:
+        // while (i < s.Length && char.IsWhiteSpace(s[i])) i++;
+
+        while (i < s.Length && char.IsDigit(s[i]))
+            i++;
+
+        prefixLen = i;
+        if (prefixLen == 0) return false;
+
+        // Парсим ровно prefix (без выделения подстроки)
+        return int.TryParse(s.Slice(0, prefixLen), out value);
+    }
+
+    private async Task<ReviewStat> PersistInitialReviewResultsAsync()
     {
         if (string.IsNullOrWhiteSpace(_initialReviewFolder))
         {
-            return;
+            return new ReviewStat();
         }
-
+        int notReviewed = 0;
+        List<int> approvedPages = new();
+        List<int> badOriginalPages = new();
+        List<int> overcuttedPages = new();
+        List<int> savedPages = new();
         var items = _viewModel.OriginalFiles.ToList();
         await Task.Run(() =>
         {
             var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
+
             foreach (var item in items)
             {
-                var newFileName = _fileNameBuilder.BuildReviewedFileName(item.FilePath, item.NewFileName);
+                var newFileName = _fileNameBuilder.BuildReviewedFileName(item.FilePath, item.NewFileName, out bool hasPageNumber);
+                _ = TryGetNumericPrefix(newFileName, out int pageNumber, out int prefixLen);
+                int currentPageNumber = pageNumber;
+                if (currentPageNumber >= 0 && hasPageNumber)
+                {
+                    savedPages.Add(currentPageNumber);
+                }
                 switch (item.ReviewStatus)
                 {
                     case ImageFileItem.ReviewStatusType.Pending:
                         //var skippedFolder = _fileProcessor.EnsureSkippedFolder(_initialReviewFolder);
                         //_fileProcessor.SaveFile(item.FilePath, p => p, skippedFolder);
+                        notReviewed++;
                         continue;
 
                     case ImageFileItem.ReviewStatusType.Approved:
+                        approvedPages.Add(currentPageNumber);
                         _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => newFileName);
                         continue;
 
@@ -533,6 +619,14 @@ public partial class MainWindow : Window
                             ImageFileItem.RejectReasonType.Overcutted => "_ct",
                             _ => "_rejected",
                         };
+                        if (item.RejectReason == ImageFileItem.RejectReasonType.BadOriginal && hasPageNumber)
+                        {
+                            badOriginalPages.Add(currentPageNumber);
+                        }
+                        else if (item.RejectReason == ImageFileItem.RejectReasonType.Overcutted && hasPageNumber)
+                        {
+                            overcuttedPages.Add(currentPageNumber);
+                        }
 
                         //var rejectedBaseName = BuildReviewedFileName(item.FilePath, item.NewFileName);
                         _fileProcessor.SaveFile(item.FilePath, p => p, rejectedFolder, _ => newFileName);
@@ -542,9 +636,20 @@ public partial class MainWindow : Window
                     default:
                         continue;
                 }
+
             }
         });
+        return new ReviewStat
+        {
+            notReviewed = notReviewed,
+            ApprovedPages = approvedPages,
+            BadOriginalPages = badOriginalPages,
+            OvercuttedPages = overcuttedPages,
+            SavedPages = savedPages
+        };
     }
+
+
 
     private string BuildReviewedFileName(string sourcePath, string newName)
     {

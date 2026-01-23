@@ -50,12 +50,13 @@ namespace ReviewTool
         }
 
         // assume that the input is valid: no extension, only digits or empty
-        public string BuildReviewedFileName(string sourcePath, string newName)
+        public string BuildReviewedFileName(string sourcePath, string newName, out bool hasPageNumber)
         {
             var ext = Path.GetExtension(sourcePath);
             var normalized = NormalizeNumericName(newName);
             var baseName = GetUniqueBaseName(normalized);
             _usedBaseNames.Add(baseName);
+            hasPageNumber = !string.IsNullOrEmpty(newName);
             return string.Concat(baseName, ext);
         }
 
