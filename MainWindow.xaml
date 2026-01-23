@@ -194,17 +194,28 @@
                         <DataTemplate>
                             <Grid HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="36" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding FileName}" VerticalAlignment="Center"
+                                <TextBlock Grid.Column="0" Text="{Binding StatusCode}" VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{Binding StatusBrush}"
+                                           FontWeight="Bold"
+                                           Margin="0,0,6,0">
+                                    <TextBlock.Effect>
+                                        <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.5" />
+                                    </TextBlock.Effect>
+                                </TextBlock>
+                                <TextBlock Grid.Column="1" Text="{Binding FileName}" VerticalAlignment="Center"
                                            Foreground="LightGray"
                                            Margin="0,0,12,0" />
-                                <TextBox Grid.Column="1" Text="{Binding NewFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                <TextBox Grid.Column="2" Text="{Binding NewFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          Margin="12,0,0,0"
                                          VerticalAlignment="Center"
                                          HorizontalAlignment="Stretch"
                                          PreviewKeyDown="FileNameTextBox_PreviewKeyDown"
+                                         GotFocus="FileNameTextBox_GotFocus"
                                          Foreground="LightGray"
                                          Background="#2F3136"
                                          BorderBrush="{StaticResource PipelineCardBorderBrush}"

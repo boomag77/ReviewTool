@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Collections.Generic;
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -33,6 +34,7 @@ public partial class MainWindow : Window
     private string? _initialReviewFolder;
     private bool _suppressFileSelection;
     private int? _lastSuggestedNumber;
+    private readonly Dictionary<ImageFileItem, string> _suggestedNames = new();
 
     private readonly FileNameBuilder _fileNameBuilder;  
 
@@ -140,6 +142,7 @@ public partial class MainWindow : Window
         _viewModel.FinalReviewButtonText = "Start Final Review...";
         _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolder);
         _fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
+        _suggestedNames.Clear();
 
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
         if (_originalFolderIndex.LastIndex < 0)
@@ -234,6 +237,9 @@ public partial class MainWindow : Window
 
         _currentImageIndex = idx;
         _ = UpdatePreviewImagesAsync();
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(FocusCurrentFileNameField));
     }
 
     private async void OkReview_Click(object sender, RoutedEventArgs e)
@@ -321,6 +327,24 @@ public partial class MainWindow : Window
                                        ImageFileItem.RejectReasonType.None,
                                        null);
         await NavigateImages(1);
+    }
+
+    private void FileNameTextBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+        {
+            return;
+        }
+
+        if (element.DataContext is not ImageFileItem item)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(_viewModel.SelectedOriginalFile, item))
+        {
+            _viewModel.SelectedOriginalFile = item;
+        }
     }
 
     private void FocusWindowForInput()
@@ -636,10 +660,11 @@ public partial class MainWindow : Window
                     return;
                 }
 
-                if (string.IsNullOrWhiteSpace(item.NewFileName))
+                if (ShouldSuggestName(item))
                 {
                     var suggestion = GetNextSuggestedName();
                     item.NewFileName = suggestion;
+                    _suggestedNames[item] = suggestion;
                     textBox.Text = suggestion;
                 }
 
@@ -677,6 +702,17 @@ public partial class MainWindow : Window
     {
         var next = _lastSuggestedNumber.HasValue ? _lastSuggestedNumber.Value + 1 : 0;
         return next.ToString("D3");
+    }
+
+    private bool ShouldSuggestName(ImageFileItem item)
+    {
+        if (string.IsNullOrWhiteSpace(item.NewFileName))
+        {
+            return true;
+        }
+
+        return _suggestedNames.TryGetValue(item, out var suggested)
+            && string.Equals(item.NewFileName, suggested, StringComparison.Ordinal);
     }
 
     private static bool TryGetNumericPrefix(string name, out int number)
