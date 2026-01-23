@@ -18,7 +18,7 @@ public sealed class FileProcessor
         var trimmed = Path.TrimEndingDirectorySeparator(originalFolder);
         var folderName = Path.GetFileName(trimmed);
         var parent = Path.GetDirectoryName(trimmed);
-        var initialName = $"{folderName}_initial";
+        var initialName = $"{folderName}_IR";
         var initialFolder = string.IsNullOrWhiteSpace(parent) ? initialName : Path.Combine(parent, initialName);
         EnsureDirectory(initialFolder);
         return initialFolder;
