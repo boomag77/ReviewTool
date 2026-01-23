@@ -14,6 +14,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private bool _isInitialReview;
     private ObservableCollection<ImageFileItem> _originalFiles = new();
     private ImageFileItem? _selectedOriginalFile;
+    private string _suggestedNumberLabel = string.Empty;
     private string _initialReviewButtonText = "Start Initial Review...";
     private string _finalReviewButtonText = "Start Final Review...";
 
@@ -71,6 +72,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _finalReviewButtonText;
         set => SetField(ref _finalReviewButtonText, value);
+    }
+
+    public string SuggestedNumberLabel
+    {
+        get => _suggestedNumberLabel;
+        set => SetField(ref _suggestedNumberLabel, value);
     }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

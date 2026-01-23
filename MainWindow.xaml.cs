@@ -174,6 +174,8 @@ public partial class MainWindow : Window
         _initialReviewFolder = null;
         _viewModel.IsInitialReview = false;
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
+        _lastSuggestedNumber = null;
+        _suggestedNames.Clear();
         MessageBox.Show(this, "Initial Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -516,8 +518,8 @@ public partial class MainWindow : Window
                 switch (item.ReviewStatus)
                 {
                     case ImageFileItem.ReviewStatusType.Pending:
-                        var skippedFolder = _fileProcessor.EnsureSkippedFolder(_initialReviewFolder);
-                        _fileProcessor.SaveFile(item.FilePath, p => p, skippedFolder);
+                        //var skippedFolder = _fileProcessor.EnsureSkippedFolder(_initialReviewFolder);
+                        //_fileProcessor.SaveFile(item.FilePath, p => p, skippedFolder);
                         continue;
 
                     case ImageFileItem.ReviewStatusType.Approved:
