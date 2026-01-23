@@ -229,8 +229,13 @@
 
             <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6">
-                <Viewbox Stretch="Uniform">
-                    <Image Source="{Binding OriginalImagePreview}" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
+                <Viewbox x:Name="OriginalViewbox" Stretch="Uniform"
+                         PreviewMouseLeftButtonDown="OriginalViewbox_PreviewMouseLeftButtonDown"
+                         PreviewMouseLeftButtonUp="OriginalViewbox_PreviewMouseLeftButtonUp"
+                         PreviewMouseMove="OriginalViewbox_PreviewMouseMove"
+                         PreviewMouseWheel="OriginalViewbox_PreviewMouseWheel"
+                         LostMouseCapture="OriginalViewbox_LostMouseCapture">
+                    <Image x:Name="OriginalImage" Source="{Binding OriginalImagePreview}" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" />
                 </Viewbox>
             </Border>
 

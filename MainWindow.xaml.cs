@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -33,6 +34,13 @@ public partial class MainWindow : Window
     private bool _isFinalReview;
     private string? _initialReviewFolder;
     private bool _suppressFileSelection;
+    private MagnifierAdorner? _magnifierAdorner;
+    private bool _magnifierEnabled;
+    private double _magnifierZoom = 2.0;
+    private const double MagnifierMinZoom = 1.0;
+    private const double MagnifierMaxZoom = 10.0;
+    private const double MagnifierZoomStep = 0.2;
+    private double _magnifierSize = 240.0;
     private int? _lastSuggestedNumber;
     private readonly Dictionary<ImageFileItem, string> _suggestedNames = new();
 
@@ -307,6 +315,60 @@ public partial class MainWindow : Window
         {
             Debug.WriteLine($"Error handling overcutted: {ex}");
         }
+    }
+
+    private void OriginalViewbox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isInitialReview)
+        {
+            return;
+        }
+
+        if (OriginalViewbox == null || _viewModel.OriginalImagePreview == null)
+        {
+            return;
+        }
+
+        var pos = e.GetPosition(OriginalViewbox);
+        EnableMagnifier(pos);
+        OriginalViewbox.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OriginalViewbox_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        DisableMagnifier();
+        OriginalViewbox?.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    private void OriginalViewbox_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        DisableMagnifier();
+    }
+
+    private void OriginalViewbox_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_magnifierEnabled || _magnifierAdorner == null || OriginalViewbox == null)
+        {
+            return;
+        }
+
+        var pos = e.GetPosition(OriginalViewbox);
+        _magnifierAdorner.UpdatePosition(pos);
+    }
+
+    private void OriginalViewbox_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (!_magnifierEnabled || _magnifierAdorner == null)
+        {
+            return;
+        }
+
+        double deltaZoom = e.Delta > 0 ? MagnifierZoomStep : -MagnifierZoomStep;
+        _magnifierZoom = Math.Max(MagnifierMinZoom, Math.Min(MagnifierMaxZoom, _magnifierZoom + deltaZoom));
+        _magnifierAdorner.UpdateZoom(_magnifierZoom);
+        e.Handled = true;
     }
 
     private async void FileNameTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -759,6 +821,31 @@ public partial class MainWindow : Window
         return null;
     }
 
+    private void EnableMagnifier(Point center)
+    {
+        if (_magnifierEnabled || OriginalViewbox == null || OriginalImage == null)
+        {
+            return;
+        }
+
+        var layer = AdornerLayer.GetAdornerLayer(OriginalViewbox);
+        if (layer == null)
+        {
+            return;
+        }
+
+        _magnifierAdorner = new MagnifierAdorner(OriginalViewbox, OriginalImage, layer, _magnifierZoom, _magnifierSize);
+        _magnifierEnabled = true;
+        _magnifierAdorner.UpdatePosition(center);
+    }
+
+    private void DisableMagnifier()
+    {
+        _magnifierEnabled = false;
+        _magnifierAdorner?.Remove();
+        _magnifierAdorner = null;
+    }
+
     private string BuildLabel(string name, CurrentFolderIndex index)
     {
         var count = Math.Max(0, index.LastIndex + 1);
@@ -911,6 +998,158 @@ public partial class MainWindow : Window
                 }
 
             }, token);
+        }
+    }
+
+    private sealed class MagnifierAdorner : Adorner
+    {
+        private readonly FrameworkElement _sourceElement;
+        private readonly AdornerLayer _layer;
+        private Point _position;
+        private double _zoom;
+        private double _lensSize;
+
+        public MagnifierAdorner(UIElement adornedElement,
+                                FrameworkElement sourceElement,
+                                AdornerLayer layer,
+                                double initialZoom,
+                                double lensSize)
+            : base(adornedElement)
+        {
+            _sourceElement = sourceElement;
+            _layer = layer;
+            _zoom = initialZoom;
+            _lensSize = lensSize;
+
+            IsHitTestVisible = false;
+            _layer.Add(this);
+        }
+
+        public void UpdatePosition(Point position)
+        {
+            _position = position;
+            InvalidateVisual();
+        }
+
+        public void UpdateZoom(double zoom)
+        {
+            _zoom = zoom;
+            InvalidateVisual();
+        }
+
+        protected override void OnRender(DrawingContext drawingContext)
+        {
+            base.OnRender(drawingContext);
+
+            if (AdornedElement is not FrameworkElement element || !element.IsVisible)
+            {
+                return;
+            }
+
+            var size = element.RenderSize;
+            if (size.Width <= 0 || size.Height <= 0)
+            {
+                return;
+            }
+
+            var imageRect = GetSourceRect(element);
+            if (imageRect.Width <= 0 || imageRect.Height <= 0)
+            {
+                return;
+            }
+
+            var sourceSize = _sourceElement.RenderSize;
+            if (sourceSize.Width <= 0 || sourceSize.Height <= 0)
+            {
+                return;
+            }
+
+            var lensSize = _lensSize;
+            if (lensSize <= 0)
+            {
+                return;
+            }
+
+            double half = lensSize / 2.0;
+            if (lensSize > imageRect.Width || lensSize > imageRect.Height)
+            {
+                lensSize = Math.Min(imageRect.Width, imageRect.Height);
+                half = lensSize / 2.0;
+            }
+            double minX = imageRect.Left + half;
+            double maxX = imageRect.Right - half;
+            double minY = imageRect.Top + half;
+            double maxY = imageRect.Bottom - half;
+            double cx = Math.Max(minX, Math.Min(_position.X, maxX));
+            double cy = Math.Max(minY, Math.Min(_position.Y, maxY));
+            var center = new Point(cx, cy);
+            var lensRect = new Rect(center.X - half, center.Y - half, lensSize, lensSize);
+
+            double viewW = lensSize / _zoom;
+            double viewH = lensSize / _zoom;
+            if (viewW > sourceSize.Width) viewW = sourceSize.Width;
+            if (viewH > sourceSize.Height) viewH = sourceSize.Height;
+
+            double lensLeft = center.X - half;
+            double lensTop = center.Y - half;
+            double travelX = Math.Max(1.0, imageRect.Width - lensSize);
+            double travelY = Math.Max(1.0, imageRect.Height - lensSize);
+            double relX = (lensLeft - imageRect.Left) / travelX;
+            double relY = (lensTop - imageRect.Top) / travelY;
+            relX = Math.Max(0.0, Math.Min(1.0, relX));
+            relY = Math.Max(0.0, Math.Min(1.0, relY));
+
+            double maxOffsetX = Math.Max(0.0, sourceSize.Width - viewW);
+            double maxOffsetY = Math.Max(0.0, sourceSize.Height - viewH);
+            double vx = maxOffsetX * relX;
+            double vy = maxOffsetY * relY;
+            var viewbox = new Rect(vx, vy, viewW, viewH);
+
+            var brush = new VisualBrush(_sourceElement)
+            {
+                Viewbox = viewbox,
+                ViewboxUnits = BrushMappingMode.Absolute,
+                Stretch = Stretch.Fill
+            };
+
+            drawingContext.PushClip(new RectangleGeometry(lensRect));
+            drawingContext.DrawRectangle(brush, null, lensRect);
+            drawingContext.Pop();
+
+            var borderBrush = new SolidColorBrush(Color.FromArgb(220, 255, 255, 255));
+            borderBrush.Freeze();
+            var borderPen = new Pen(borderBrush, 1.5);
+            borderPen.Freeze();
+            drawingContext.DrawRectangle(null, borderPen, lensRect);
+        }
+
+        private Rect GetSourceRect(FrameworkElement adornedElement)
+        {
+            if (_sourceElement == null || adornedElement == null)
+            {
+                return Rect.Empty;
+            }
+
+            try
+            {
+                var bounds = VisualTreeHelper.GetDescendantBounds(_sourceElement);
+                if (bounds.IsEmpty)
+                {
+                    return Rect.Empty;
+                }
+
+                var transform = _sourceElement.TransformToVisual(adornedElement);
+                return transform.TransformBounds(bounds);
+            }
+            catch
+            {
+                return Rect.Empty;
+            }
+        }
+
+        public void Remove()
+        {
+            _layer.Remove(this);
         }
     }
 
