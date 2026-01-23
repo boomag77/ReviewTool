@@ -32,11 +32,15 @@ public partial class MainWindow : Window
     private bool _isFinalReview;
     private string? _initialReviewFolder;
     private bool _suppressFileSelection;
+    private int? _lastSuggestedNumber;
 
+    private readonly FileNameBuilder _fileNameBuilder;  
 
     public MainWindow()
     {
         InitializeComponent();
+        _fileNameBuilder = new FileNameBuilder();
+
         DataContext = _viewModel;
         Loaded += (_, _) => Keyboard.Focus(this);
         _originalFolderIndex = new CurrentFolderIndex(this);
@@ -135,6 +139,7 @@ public partial class MainWindow : Window
         _viewModel.InitialReviewButtonText = "Finish Initial Review";
         _viewModel.FinalReviewButtonText = "Start Final Review...";
         _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolder);
+        _fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
 
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
         if (_originalFolderIndex.LastIndex < 0)
@@ -421,6 +426,7 @@ public partial class MainWindow : Window
             var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
             foreach (var item in items)
             {
+                var newFileName = _fileNameBuilder.BuildReviewedFileName(item.FilePath, item.NewFileName);
                 switch (item.ReviewStatus)
                 {
                     case ImageFileItem.ReviewStatusType.Pending:
@@ -429,14 +435,7 @@ public partial class MainWindow : Window
                         continue;
 
                     case ImageFileItem.ReviewStatusType.Approved:
-                        var approvedFileName = item.NewFileName;
-                        if (string.IsNullOrWhiteSpace(_____))
-                        {
-                            _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder);
-                            continue;
-                        }
-                        approvedFileName = BuildReviewedFileName(item.FilePath, item.NewFileName);
-                        _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => approvedFileName);
+                        _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => newFileName);
                         continue;
 
                     case ImageFileItem.ReviewStatusType.Rejected:
@@ -447,10 +446,9 @@ public partial class MainWindow : Window
                             _ => "_rejected",
                         };
 
-                        var rejectedBaseName = BuildReviewedFileName(item.FilePath, item.NewFileName);
-                        _fileProcessor.SaveFile(item.FilePath, p => p, rejectedFolder, _ => rejectedBaseName);
-                        var rejectedFileName = BuildReviewedFileName(item.FilePath, item.NewFileName);
-                        var suffixed = _fileProcessor.BuildSuffixedFileName(rejectedFileName, suffix);
+                        //var rejectedBaseName = BuildReviewedFileName(item.FilePath, item.NewFileName);
+                        _fileProcessor.SaveFile(item.FilePath, p => p, rejectedFolder, _ => newFileName);
+                        var suffixed = _fileProcessor.BuildSuffixedFileName(newFileName, suffix);
                         _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => suffixed);
                         continue;
                     default:
@@ -485,6 +483,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        CaptureLastSuggestedNumber();
         _currentImageIndex = nextIndex;
         await UpdatePreviewImagesAsync();
     }
@@ -637,9 +636,70 @@ public partial class MainWindow : Window
                     return;
                 }
 
+                if (string.IsNullOrWhiteSpace(item.NewFileName))
+                {
+                    var suggestion = GetNextSuggestedName();
+                    item.NewFileName = suggestion;
+                    textBox.Text = suggestion;
+                }
+
                 textBox.Focus();
                 textBox.SelectAll();
             }));
+    }
+
+    private void CaptureLastSuggestedNumber()
+    {
+        if (!_isInitialReview)
+        {
+            return;
+        }
+
+        var item = _viewModel.SelectedOriginalFile;
+        if (item is null && _originalFolderIndex.TryGetFilePathForIndex(_currentImageIndex, out var currentPath))
+        {
+            item = _viewModel.OriginalFiles.FirstOrDefault(candidate =>
+                string.Equals(candidate.FilePath, currentPath, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (item is null)
+        {
+            return;
+        }
+
+        if (TryGetNumericPrefix(item.NewFileName, out var number))
+        {
+            _lastSuggestedNumber = number;
+        }
+    }
+
+    private string GetNextSuggestedName()
+    {
+        var next = _lastSuggestedNumber.HasValue ? _lastSuggestedNumber.Value + 1 : 0;
+        return next.ToString("D3");
+    }
+
+    private static bool TryGetNumericPrefix(string name, out int number)
+    {
+        number = 0;
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        var span = name.AsSpan().Trim();
+        var i = 0;
+        while (i < span.Length && char.IsDigit(span[i]))
+        {
+            i++;
+        }
+
+        if (i == 0)
+        {
+            return false;
+        }
+
+        return int.TryParse(span[..i], out number);
     }
 
     private static T? FindVisualChild<T>(DependencyObject root) where T : DependencyObject

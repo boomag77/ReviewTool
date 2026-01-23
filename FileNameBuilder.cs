@@ -1,4 +1,6 @@
-﻿using System.IO;    
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
 
 namespace ReviewTool
 {
@@ -6,13 +8,11 @@ namespace ReviewTool
     {
 
         private const int maxDigitLength = 3;
+        private readonly HashSet<string> _usedBaseNames = new(StringComparer.OrdinalIgnoreCase);
         private readonly string emptyName;
 
-        FileNameBuilder()
+        public FileNameBuilder()
         {
-            LastEmptySuffix = string.Empty;
-            LastLetterSuffix = string.Empty;
-            LastNumFileName = string.Empty;
             Span<char> emptyNameSpan = stackalloc char[maxDigitLength];
             emptyNameSpan.Fill('0');
             emptyName = new string(emptyNameSpan);
@@ -35,84 +35,62 @@ namespace ReviewTool
             }
         }
 
-        private string LastNumFileName
+        public void Reset(IEnumerable<string> existingFilePaths)
         {
-            get => field;
-            set => field = value;
-        }
-
-        private string LastLetterSuffix
-        {
-            get => field;
-            set => field = value;
-        }
-
-        private string LastEmptySuffix
-        {
-            get => field;
-            set => field = value;
+            _usedBaseNames.Clear();
+            foreach (var path in existingFilePaths)
+            {
+                var baseName = Path.GetFileNameWithoutExtension(path);
+                if (string.IsNullOrWhiteSpace(baseName))
+                {
+                    continue;
+                }
+                _usedBaseNames.Add(baseName);
+            }
         }
 
         // assume that the input is valid: no extension, only digits or empty
         public string BuildReviewedFileName(string sourcePath, string newName)
         {
-            var resultName = string.Empty;
             var ext = Path.GetExtension(sourcePath);
+            var normalized = NormalizeNumericName(newName);
+            var baseName = GetUniqueBaseName(normalized);
+            _usedBaseNames.Add(baseName);
+            return string.Concat(baseName, ext);
+        }
+
+        private string NormalizeNumericName(string newName)
+        {
             if (string.IsNullOrWhiteSpace(newName))
             {
-                if (LastEmptySuffix == string.Empty)
-                {
-                    LastEmptySuffix = IncrementLetterSuffix(LastEmptySuffix);
-                    resultName = string.Concat(emptyName, LastEmptySuffix, ext);
-                }
-                else
-                {
-                    var newLetterSuffix = IncrementLetterSuffix(LastEmptySuffix);
-                    var result = string.Concat(emptyName, newLetterSuffix, ext);
-                    LastEmptySuffix = newLetterSuffix;
-                    return result;
-                }
+                return emptyName;
             }
 
-            Span<char> newNameSpan = stackalloc char[newName.Length];
-            newName.AsSpan().CopyTo(newNameSpan);
-            if (newNameSpan.TrimStart('0').Length == 0)
+            var trimmed = newName.Trim();
+            if (!int.TryParse(trimmed, out var number))
             {
-                // all zeros
-                if (LastNumFileName == string.Empty)
-                {
-                    LastNumFileName = newName;
-                    resultName = string.Concat(newName, ext);
-                }
-                else
-                {
-                    int lastNum = int.Parse(LastNumFileName);
-                    int newNum = lastNum + 1;
-                    var newNumStr = newNum.ToString().PadLeft(newName.Length, '0');
-                    LastNumFileName = newNumStr;
-                    return string.Concat(newNumStr, ext);
-                }
-            }
-            else
-            {
-                // has non-zero characters
-                if (string.Compare(newName, LastNumFileName, StringComparison.Ordinal) > 0)
-                {
-                    LastNumFileName = newName;
-                    resultName = string.Concat(newName, ext);
-                }
-                else
-                {
-                    int lastNum = int.Parse(LastNumFileName);
-                    int newNum = lastNum + 1;
-                    var newNumStr = newNum.ToString().PadLeft(newName.Length, '0');
-                    LastNumFileName = newNumStr;
-                    return string.Concat(newNumStr, ext);
-                }
+                return trimmed.PadLeft(maxDigitLength, '0');
             }
 
-            return resultName;
+            return number.ToString($"D{maxDigitLength}");
+        }
+
+        private string GetUniqueBaseName(string normalized)
+        {
+            if (!_usedBaseNames.Contains(normalized))
+            {
+                return normalized;
+            }
+
+            var suffix = "A";
+            while (_usedBaseNames.Contains(string.Concat(normalized, suffix)))
+            {
+                suffix = IncrementLetterSuffix(suffix);
+            }
+
+            return string.Concat(normalized, suffix);
         }
 
     }
 }
+
