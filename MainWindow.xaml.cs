@@ -717,19 +717,6 @@ public partial class MainWindow : Window
         };
     }
 
-
-
-    private string BuildReviewedFileName(string sourcePath, string newName)
-    {
-        if (string.IsNullOrWhiteSpace(newName))
-        {
-            return Path.GetFileName(sourcePath);
-        }
-
-        var ext = Path.GetExtension(sourcePath);
-        return Path.HasExtension(newName) ? newName : string.Concat(newName, ext);
-    }
-
     private async Task NavigateImages(int delta)
     {
         var maxIndex = Math.Max(_originalFolderIndex.LastIndex, _processedFolderIndex.LastIndex);
