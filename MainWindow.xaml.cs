@@ -211,10 +211,8 @@ public partial class MainWindow : Window
             int prev = a[i - 1];
             int cur = a[i];
 
-            // ÃÂµÃ‘ÂÃÂ»ÃÂ¸ ÃÂµÃ‘ÂÃ‘â€šÃ‘Å’ duplicates ÃÂ¸ÃÂ»ÃÂ¸ ÃÂ¼ÃÂ°Ã‘ÂÃ‘ÂÃÂ¸ÃÂ² ÃÂ½ÃÂµ Ã‘ÂÃ‘â€šÃ‘â‚¬ÃÂ¾ÃÂ³ÃÂ¾ ÃÂ²ÃÂ¾ÃÂ·Ã‘â‚¬ÃÂ°Ã‘ÂÃ‘â€šÃÂ°Ã‘Å½Ã‘â€°ÃÂ¸ÃÂ¹ Ã¢â‚¬â€ ÃÂ¿Ã‘â‚¬ÃÂ¾ÃÂ¿Ã‘Æ’Ã‘ÂÃÂºÃÂ°ÃÂµÃÂ¼ "ÃÂ¿ÃÂ»ÃÂ¾Ã‘â€¦ÃÂ¸ÃÂµ" ÃÂ¿ÃÂ°Ã‘â‚¬Ã‘â€¹
             if (cur <= prev) continue;
 
-            // ÃÂ´ÃÂ¾ÃÂ±ÃÂ°ÃÂ²ÃÂ»Ã‘ÂÃÂµÃÂ¼ prev+1 ... cur-1
             for (int x = prev + 1; x < cur; x++)
                 missing.Add(x);
         }
@@ -365,6 +363,11 @@ public partial class MainWindow : Window
         if (idx == _currentImageIndex)
         {
             return;
+        }
+
+        if (e.RemovedItems.Count > 0 && e.RemovedItems[0] is ImageFileItem removedItem)
+        {
+            CaptureLastSuggestedNumber(removedItem);
         }
 
         _currentImageIndex = idx;
@@ -917,6 +920,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        CaptureLastSuggestedNumber(item);
+    }
+
+    private void CaptureLastSuggestedNumber(ImageFileItem item)
+    {
         if (TryGetNumericPrefix(item.NewFileName, out var number))
         {
             _lastSuggestedNumber = number;
@@ -931,6 +939,11 @@ public partial class MainWindow : Window
 
     private bool ShouldSuggestName(ImageFileItem item)
     {
+        if (item.ReviewStatus != ImageFileItem.ReviewStatusType.Pending)
+        {
+            return false;
+        }
+
         if (string.IsNullOrWhiteSpace(item.NewFileName))
         {
             return true;
