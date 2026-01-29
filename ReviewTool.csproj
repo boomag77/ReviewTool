@@ -15,4 +15,10 @@
     <Folder Include="Models\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="ReviewTool.Tests\**\*.cs" />
+    <EmbeddedResource Remove="ReviewTool.Tests\**\*" />
+    <None Remove="ReviewTool.Tests\**\*" />
+  </ItemGroup>
+
 </Project>

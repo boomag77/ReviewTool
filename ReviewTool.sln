@@ -4,6 +4,8 @@ VisualStudioVersion = 18.2.11415.280 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReviewTool", "ReviewTool.csproj", "{2A0286F1-0164-2EE5-6567-997B0649343A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReviewTool.Tests", "ReviewTool.Tests\\ReviewTool.Tests.csproj", "{DF84DD24-163C-46DD-9CEF-85A6284392F5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,6 +22,14 @@ Global
 		{2A0286F1-0164-2EE5-6567-997B0649343A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{2A0286F1-0164-2EE5-6567-997B0649343A}.Release|x64.ActiveCfg = Release|x64
 		{2A0286F1-0164-2EE5-6567-997B0649343A}.Release|x64.Build.0 = Release|x64
+		{DF84DD24-163C-46DD-9CEF-85A6284392F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DF84DD24-163C-46DD-9CEF-85A6284392F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DF84DD24-163C-46DD-9CEF-85A6284392F5}.Debug|x64.ActiveCfg = Debug|x64
+		{DF84DD24-163C-46DD-9CEF-85A6284392F5}.Debug|x64.Build.0 = Debug|x64
+		{DF84DD24-163C-46DD-9CEF-85A6284392F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DF84DD24-163C-46DD-9CEF-85A6284392F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DF84DD24-163C-46DD-9CEF-85A6284392F5}.Release|x64.ActiveCfg = Release|x64
+		{DF84DD24-163C-46DD-9CEF-85A6284392F5}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

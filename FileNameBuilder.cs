@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
+﻿using System.IO;
 
 namespace ReviewTool
 {
@@ -25,15 +23,14 @@ namespace ReviewTool
             {
                 return "A";
             }
+
             char lastChar = suffix[^1];
-            if (lastChar == 'Z')
-            {
-                return IncrementLetterSuffix(suffix[..^1]) + 'A';
-            }
-            else
+            if (lastChar < 'Z')
             {
                 return suffix[..^1] + (char)(lastChar + 1);
             }
+
+            return new string('Z', suffix.Length) + "A";
         }
 
         public void Reset(IEnumerable<string> existingFilePaths)
@@ -110,7 +107,7 @@ namespace ReviewTool
         {
             ReadOnlySpan<char> ext = Path.GetExtension(sourcePath);
             hasPageNumber = true;
-            if (newName.IsEmpty)
+            if (newName.IsEmpty || (int.TryParse(newName, out int num) && num == 0))
             {
                 hasPageNumber = false;
                 var uniqueEmptyName = GetUniqueBaseName(emptyName);
@@ -128,10 +125,10 @@ namespace ReviewTool
             }
             else if (newNameHasOnlyLetters)
             {
-                var normalizedString = string.Concat(emptyName, trimmedNewNameSpan);
+                var normalizedString = string.Concat("000", trimmedNewNameSpan);
                 reviewedName = GetUniqueBaseName(normalizedString);
             }
-                
+
             else if (TryGetNumericPrefix(trimmedNewNameSpan, out ReadOnlySpan<char> numericPrefix, out var numericPrefixLength) &&
                TryGetLetterSuffix(trimmedNewNameSpan.Slice(numericPrefixLength), out string letterSuffix))
             {
@@ -145,17 +142,17 @@ namespace ReviewTool
                 var unspecifiedName = string.Concat("_", trimmedNewNameSpan);
                 reviewedName = GetUniqueBaseName(unspecifiedName);
             }
-                _usedBaseNames.Add(reviewedName);
+            _usedBaseNames.Add(reviewedName);
 
             return string.Concat(reviewedName, ext);
         }
 
         private string NormalizeNumericName(ReadOnlySpan<char> numberString)
         {
-            var nededPadding = _maxDigitLength - numberString.Length;
-            return nededPadding > 0
-                ? string.Concat(new string('0', nededPadding), numberString.ToString())
-                : numberString.ToString();
+            var trimmed = numberString.TrimStart('0');
+            var normalized = trimmed.IsEmpty ? "0" : trimmed.ToString();
+            var targetWidth = Math.Max(3, normalized.Length);
+            return normalized.PadLeft(targetWidth, '0');
         }
 
         private string GetUniqueBaseName(string name)
