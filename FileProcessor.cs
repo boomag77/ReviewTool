@@ -57,6 +57,33 @@ public sealed class FileProcessor
         return string.Concat(name, suffix, ext);
     }
 
+    public async Task<int> GetMaxDigitsInImageFiles(string folderPath)
+    {
+        var maxDigits = 0;
+        var imageFiles = ListImageFiles(folderPath);
+        foreach (var file in imageFiles)
+        {
+            var name = Path.GetFileNameWithoutExtension(file);
+            var digitCount = 0;
+            for (var i = name.Length - 1; i >= 0; i--)
+            {
+                if (char.IsDigit(name[i]))
+                {
+                    digitCount++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            if (digitCount > maxDigits)
+            {
+                maxDigits = digitCount;
+            }
+        }
+        return maxDigits;
+    }
+
     public bool IsSupportedImage(string filePath)
     {
         return _imageExtensions.Contains(Path.GetExtension(filePath));

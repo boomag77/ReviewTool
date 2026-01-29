@@ -20,9 +20,9 @@ public partial class MainWindow : Window
     private struct ReviewStat
     {
         public int notReviewed;
-        public List<int> ApprovedPages;
-        public List<int> BadOriginalPages;
-        public List<int> OvercuttedPages;
+        public List<string> ApprovedPages;
+        public List<string> BadOriginalPages;
+        public List<string> OvercuttedPages;
         public List<int> SavedPages;
     }
 
@@ -53,12 +53,12 @@ public partial class MainWindow : Window
     private int? _lastSuggestedNumber;
     private readonly Dictionary<ImageFileItem, string> _suggestedNames = new();
 
-    private readonly FileNameBuilder _fileNameBuilder;
+    // readonly FileNameBuilder _fileNameBuilder;
 
     public MainWindow()
     {
         InitializeComponent();
-        _fileNameBuilder = new FileNameBuilder();
+        //_fileNameBuilder = new FileNameBuilder();
 
         DataContext = _viewModel;
         Loaded += (_, _) => Keyboard.Focus(this);
@@ -158,6 +158,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        var imageFilesDigitsNumber = _fileProcessor.GetMaxDigitsInImageFiles(originalFolder);
+
         _isInitialReview = true;
         _isFinalReview = false;
         _viewModel.IsInitialReview = true;
@@ -184,10 +186,12 @@ public partial class MainWindow : Window
         }
 
         _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolder);
-        _fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
+        //_fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
         _suggestedNames.Clear();
 
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
+        ReadOnlySpan<char> span = _originalFolderIndex.LastIndex.ToString().AsSpan();
+        
         if (_originalFolderIndex.LastIndex < 0)
         {
             ResetProcessedIndex();
@@ -230,10 +234,9 @@ public partial class MainWindow : Window
             savedPages.Sort();
             ReadOnlySpan<int> savedPagesSpan = CollectionsMarshal.AsSpan(savedPages);
             missingPages = CollectMissing(savedPagesSpan);
-            
-
         }
         var totalImagesToReview = TotalImagesToReview;
+
         ClearReviewState(clearProcessed: true);
         _isInitialReview = false;
         _initialReviewFolder = null;
@@ -241,6 +244,7 @@ public partial class MainWindow : Window
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
+
         var reviewedCount = totalImagesToReview - taskResult.notReviewed;
         double sourceQuality = Math.Round((double)taskResult.ApprovedPages.Count / reviewedCount, 2) * 100;
         bool isSuccessedReview = true;
@@ -285,7 +289,6 @@ public partial class MainWindow : Window
         if (reportRows == null || reportRows.Count == 0)
             return string.Empty;
 
-        // ÃÅ“ÃÂ¾ÃÂ¶ÃÂ½ÃÂ¾ ÃÂ¿Ã‘â‚¬ÃÂ¸ÃÂºÃÂ¸ÃÂ½Ã‘Æ’Ã‘â€šÃ‘Å’ capacity, Ã‘â€¡Ã‘â€šÃÂ¾ÃÂ±Ã‘â€¹ Ã‘â‚¬ÃÂµÃÂ¶ÃÂµ Ã‘â‚¬ÃÂ¾Ã‘Â StringBuilder
         int totalLen = 0;
         for (int i = 0; i < reportRows.Count; i++)
             totalLen += reportRows[i]?.Length ?? 0;
@@ -650,18 +653,21 @@ public partial class MainWindow : Window
             return new ReviewStat();
         }
         int notReviewed = 0;
-        HashSet<int> approvedPages = new();
-        List<int> badOriginalPages = new();
-        List<int> overcuttedPages = new();
+        HashSet<string> approvedPages = new();
+        List<string> badOriginalPages = new();
+        List<string> overcuttedPages = new();
         List<int> savedPages = new();
         var items = _viewModel.OriginalFiles.ToList();
+        var maxIndex = items.Count;
+        var maxDigitsLen = maxIndex.ToString().Length;
+        var fileNameBuilder = new FileNameBuilder(maxDigitsLen);
         await Task.Run(() =>
         {
             var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
 
             foreach (var item in items)
             {
-                var newFileName = _fileNameBuilder.BuildReviewedFileName(item.FilePath, item.NewFileName, out bool hasPageNumber);
+                var newFileName = fileNameBuilder.BuildReviewedFileName(item.FilePath, item.NewFileName, out bool hasPageNumber);
                 _ = TryGetNumericPrefix(newFileName, out int pageNumber, out int prefixLen);
                 int currentPageNumber = pageNumber;
                 if (currentPageNumber >= 0 && hasPageNumber)
@@ -677,7 +683,7 @@ public partial class MainWindow : Window
                         continue;
 
                     case ImageFileItem.ReviewStatusType.Approved:
-                        approvedPages.Add(currentPageNumber);
+                        approvedPages.Add(newFileName);
                         _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => newFileName);
                         continue;
 
@@ -690,11 +696,11 @@ public partial class MainWindow : Window
                         };
                         if (item.RejectReason == ImageFileItem.RejectReasonType.BadOriginal && hasPageNumber)
                         {
-                            badOriginalPages.Add(currentPageNumber);
+                            badOriginalPages.Add(newFileName);
                         }
                         else if (item.RejectReason == ImageFileItem.RejectReasonType.Overcutted && hasPageNumber)
                         {
-                            overcuttedPages.Add(currentPageNumber);
+                            overcuttedPages.Add(newFileName);
                         }
 
                         //var rejectedBaseName = BuildReviewedFileName(item.FilePath, item.NewFileName);
@@ -708,8 +714,8 @@ public partial class MainWindow : Window
 
             }
         });
-        badOriginalPages.RemoveAll(approvedPages.Contains);
-        overcuttedPages.RemoveAll(approvedPages.Contains);
+        //badOriginalPages.RemoveAll(approvedPages.Contains);
+        //overcuttedPages.RemoveAll(approvedPages.Contains);
         return new ReviewStat
         {
             notReviewed = notReviewed,
@@ -934,7 +940,8 @@ public partial class MainWindow : Window
     private string GetNextSuggestedName()
     {
         var next = _lastSuggestedNumber.HasValue ? _lastSuggestedNumber.Value + 1 : 0;
-        return next.ToString("D3");
+        string format = TotalImagesToReview < 1000 ? "D3" : "D4";
+        return next.ToString(format);
     }
 
     private bool ShouldSuggestName(ImageFileItem item)
