@@ -218,7 +218,7 @@ public partial class MainWindow : Window
     {
         var actionResult = MessageBox.Show(
             this,
-            "Choose what to do next:\n\nYes = Perform renumbering and save files\nNo = Only save review results to TSV",
+            "Choose what to do next:\n\nYes = Perform renumbering and save files\nNo = Only save review results to file",
             "Initial Review",
             MessageBoxButton.YesNoCancel,
             MessageBoxImage.Question);
