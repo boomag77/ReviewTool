@@ -782,7 +782,11 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(outputFolder))
         {
-            return;
+            outputFolder = SelectFolder("Select folder to save TSV results");
+            if (string.IsNullOrWhiteSpace(outputFolder))
+            {
+                return;
+            }
         }
 
         Directory.CreateDirectory(outputFolder);
@@ -815,9 +819,6 @@ public partial class MainWindow : Window
         statsBuilder.AppendLine($"Overcutted\t{folderStat.OvercuttedPages?.Length ?? 0}\t{Sanitize(JoinItems(folderStat.OvercuttedPages ?? Array.Empty<string>()))}");
         statsBuilder.AppendLine($"Missing pages\t{folderStat.MissingPages?.Length ?? 0}\t{Sanitize(JoinItems(folderStat.MissingPages ?? Array.Empty<int>()))}");
 
-        var statsPath = Path.Combine(outputFolder, "InitialReviewStats.tsv");
-        File.WriteAllText(statsPath, statsBuilder.ToString(), Encoding.UTF8);
-
         var mappingBuilder = new StringBuilder();
         mappingBuilder.AppendLine("OriginalName\tNewName\tReviewStatus\tRejectReason\tReviewDate");
         if (mappingInfo != null)
@@ -839,7 +840,20 @@ public partial class MainWindow : Window
         var baseName = string.IsNullOrWhiteSpace(_originalFolderPath)
             ? "InitialReviewMapping"
             : Path.GetFileName(Path.TrimEndingDirectorySeparator(_originalFolderPath));
-        var mappingPath = Path.Combine(outputFolder, $"{baseName}.irm");
+        var saveDialog = new SaveFileDialog
+        {
+            Title = "Save mapping file",
+            Filter = "IR mapping (*.irm)|*.irm|TSV files (*.tsv)|*.tsv|All files (*.*)|*.*",
+            FileName = $"{baseName}.irm",
+            InitialDirectory = outputFolder
+        };
+
+        if (saveDialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var mappingPath = saveDialog.FileName;
         File.WriteAllText(mappingPath, mappingBuilder.ToString(), Encoding.UTF8);
     }
 
