@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -59,7 +60,7 @@ public partial class MainWindow : Window
 
     private string _originalFolderPath = string.Empty;
 
-    // readonly FileNameBuilder _fileNameBuilder;
+    private readonly CancellationTokenSource _cts;
 
     public MainWindow()
     {
@@ -71,6 +72,14 @@ public partial class MainWindow : Window
         _originalFolderIndex = new CurrentFolderIndex(this);
         _processedFolderIndex = new CurrentFolderIndex(this);
 
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        _cts?.Cancel();
+        _processedFolderIndexCts?.Cancel();
+        _originalFolderIndexCts?.Cancel();
+        base.OnClosing(e);
     }
 
     private int TotalImagesToReview
