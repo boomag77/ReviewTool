@@ -1,5 +1,9 @@
 using System.Collections.Frozen;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -99,12 +103,58 @@ public sealed class FileProcessor
 
     public BitmapSource LoadBitmapImage(string path)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-        var frame = decoder.Frames[0];
-        var oriented = ApplyExifOrientation(frame);
-        oriented.Freeze();
-        return oriented;
+        //using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        //var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        //var frame = decoder.Frames[0];
+        //var oriented = ApplyExifOrientation(frame);
+        //oriented.Freeze();
+        //return oriented;
+        return LoadBitmapImageGeneric(path)
+            ?? throw new InvalidDataException($"Failed to load image from file: {path}");
+    }
+
+    private BitmapSource? LoadBitmapImageGeneric(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return null;
+        }
+
+        var extension = Path.GetExtension(path);
+        if (extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var tiffImage = TiffReader.LoadImageSourceFromTiff(path).GetAwaiter().GetResult();
+                if (tiffImage is BitmapSource tiffBmp)
+                {
+                    if (!tiffBmp.IsFrozen) tiffBmp.Freeze();
+                    return tiffBmp;
+                }
+            }
+            catch
+            {
+                // fall through to generic loaders
+            }
+        }
+
+        if (TryLoadWithWic(path, out var wicBmp))
+        {
+            return wicBmp;
+        }
+
+        if (TryLoadWithWicUri(path, out var wicUriBmp))
+        {
+            return wicUriBmp;
+        }
+
+        if (TryLoadWithGdi(path, out var gdiBmp))
+        {
+            return gdiBmp;
+        }
+
+        return null;
     }
 
     private void EnsureDirectory(string path)
@@ -190,5 +240,143 @@ public sealed class FileProcessor
         };
 
         return transform is null ? frame : new TransformedBitmap(frame, transform);
+    }
+
+    private static bool TryLoadWithWic(string path, out BitmapSource? bmp)
+    {
+        bmp = null;
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+
+            var decoder = BitmapDecoder.Create(
+                fs,
+                BitmapCreateOptions.PreservePixelFormat | BitmapCreateOptions.IgnoreColorProfile,
+                BitmapCacheOption.OnLoad);
+
+            var frame = decoder.Frames[0];
+            BitmapSource src = frame;
+            int orientation = ReadExifOrientation(frame.Metadata as BitmapMetadata);
+            src = ApplyExifOrientation(src, orientation);
+            src = EnsureBgr24OrBgra32(src);
+            if (!src.IsFrozen) src.Freeze();
+            bmp = src;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryLoadWithWicUri(string path, out BitmapSource? bmp)
+    {
+        bmp = null;
+        try
+        {
+            var bi = new BitmapImage();
+            bi.BeginInit();
+            bi.CacheOption = BitmapCacheOption.OnLoad;
+            bi.CreateOptions = BitmapCreateOptions.PreservePixelFormat | BitmapCreateOptions.IgnoreColorProfile;
+            bi.UriSource = new Uri(path, UriKind.Absolute);
+            bi.EndInit();
+
+            BitmapSource src = bi;
+            int orientation = ReadExifOrientation(bi.Metadata as BitmapMetadata);
+            src = ApplyExifOrientation(src, orientation);
+            src = EnsureBgr24OrBgra32(src);
+            if (!src.IsFrozen) src.Freeze();
+            bmp = src;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryLoadWithGdi(string path, out BitmapSource? bmp)
+    {
+        bmp = null;
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var img = Image.FromStream(fs, useEmbeddedColorManagement: false, validateImageData: false);
+            using var bmpGdi = new Bitmap(img);
+            IntPtr hBitmap = bmpGdi.GetHbitmap();
+            try
+            {
+                var src = Imaging.CreateBitmapSourceFromHBitmap(
+                    hBitmap,
+                    IntPtr.Zero,
+                    System.Windows.Int32Rect.Empty,
+                    BitmapSizeOptions.FromEmptyOptions());
+                if (!src.IsFrozen) src.Freeze();
+                bmp = src;
+                return true;
+            }
+            finally
+            {
+                DeleteObject(hBitmap);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr hObject);
+
+    private static int ReadExifOrientation(BitmapMetadata? meta)
+    {
+        if (meta == null) return 1;
+
+        object? v = null;
+        try { v = meta.GetQuery("/app1/ifd/{ushort=274}"); } catch { }
+        if (v == null)
+            try { v = meta.GetQuery("/ifd/{ushort=274}"); } catch { }
+
+        if (v is ushort u) return u;
+        if (v is short s) return s;
+        return 1;
+    }
+
+    private static BitmapSource ApplyExifOrientation(BitmapSource src, int orientation)
+    {
+        if (orientation <= 1 || orientation > 8) return src;
+
+        BitmapSource Rot90(BitmapSource s) => new TransformedBitmap(s, new RotateTransform(90));
+        BitmapSource Rot180(BitmapSource s) => new TransformedBitmap(s, new RotateTransform(180));
+        BitmapSource Rot270(BitmapSource s) => new TransformedBitmap(s, new RotateTransform(270));
+        BitmapSource FlipH(BitmapSource s) => new TransformedBitmap(s, new ScaleTransform(-1, 1));
+        BitmapSource FlipV(BitmapSource s) => new TransformedBitmap(s, new ScaleTransform(1, -1));
+
+        return orientation switch
+        {
+            2 => FlipH(src),
+            3 => Rot180(src),
+            4 => FlipV(src),
+            5 => FlipH(Rot90(src)),
+            6 => Rot90(src),
+            7 => FlipV(Rot90(src)),
+            8 => Rot270(src),
+            _ => src
+        };
+    }
+
+    private static BitmapSource EnsureBgr24OrBgra32(BitmapSource src)
+    {
+        if (src.Format == PixelFormats.Bgr24 || src.Format == PixelFormats.Bgra32)
+        {
+            return src;
+        }
+
+        var conv = new FormatConvertedBitmap(src, PixelFormats.Bgr24, null, 0);
+        conv.Freeze();
+        return conv;
     }
 }
