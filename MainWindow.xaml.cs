@@ -228,33 +228,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        ReviewStat taskResult;
-        List<ImageFileMappingInfo> mappingInfo = new List<ImageFileMappingInfo>();
+        (ReviewStat taskResult, List<ImageFileMappingInfo> mappingInfo) = await CreateInitialReviewResultAsync();
 
         if (actionResult == MessageBoxResult.Yes)
         {
-            (taskResult, mappingInfo) = await CreateInitialReviewResultAsync();
-            var ok = await PerformMappingToAsync(_originalFolderPath, mappingInfo);
-            if (!ok)
+            if (!await PerformMappingToAsync(_originalFolderPath, mappingInfo))
             {
                 return;
             }
-
-            ClearReviewState(clearProcessed: true);
-            _isInitialReview = false;
-            _initialReviewFolder = null;
-            _viewModel.IsInitialReview = false;
-            _viewModel.InitialReviewButtonText = "Start Initial Review...";
-            _lastSuggestedNumber = null;
-            _suggestedNames.Clear();
-
         }
         else
-        {
-            (taskResult, mappingInfo) = await CreateInitialReviewResultAsync();
-        }
-
-        if (actionResult == MessageBoxResult.No)
         {
             var outputFolder = SelectFolder("Select folder to save TSV results");
             if (!string.IsNullOrWhiteSpace(outputFolder))
@@ -262,23 +245,14 @@ public partial class MainWindow : Window
                 CreateAndSaveTsvFile(taskResult, mappingInfo, outputFolder);
             }
         }
-    }
 
-    private static string BuildReportMessage(IReadOnlyList<string> reportRows)
-    {
-        if (reportRows == null || reportRows.Count == 0)
-            return string.Empty;
-
-        int totalLen = 0;
-        for (int i = 0; i < reportRows.Count; i++)
-            totalLen += reportRows[i]?.Length ?? 0;
-
-        var sb = new StringBuilder(totalLen);
-
-        for (int i = 0; i < reportRows.Count; i++)
-            sb.Append(reportRows[i]);
-
-        return sb.ToString();
+        ClearReviewState(clearProcessed: true);
+        _isInitialReview = false;
+        _initialReviewFolder = null;
+        _viewModel.IsInitialReview = false;
+        _viewModel.InitialReviewButtonText = "Start Initial Review...";
+        _lastSuggestedNumber = null;
+        _suggestedNames.Clear();
     }
 
 
@@ -756,7 +730,7 @@ public partial class MainWindow : Window
                     RejectReason = items[i].RejectReason.ToString(),
                     ReviewDate = date
                 };
-                folderMappingInfo[i] = itemMappingInfo;
+                folderMappingInfo.Add(itemMappingInfo);
             }
         });
         for (int i = 1; i <= maxPageNumber; i++)
@@ -782,7 +756,7 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(outputFolder))
         {
-            outputFolder = SelectFolder("Select folder to save TSV results");
+            //outputFolder = SelectFolder("Select folder to save TSV results");
             if (string.IsNullOrWhiteSpace(outputFolder))
             {
                 return;
@@ -843,8 +817,8 @@ public partial class MainWindow : Window
         var saveDialog = new SaveFileDialog
         {
             Title = "Save mapping file",
-            Filter = "IR mapping (*.irm)|*.irm|TSV files (*.tsv)|*.tsv|All files (*.*)|*.*",
-            FileName = $"{baseName}.irm",
+            Filter = "IR mapping TSV files (*.tsv)|*.tsv|All files (*.*)|*.*",
+            FileName = $"{baseName}.tsv",
             InitialDirectory = outputFolder
         };
 
