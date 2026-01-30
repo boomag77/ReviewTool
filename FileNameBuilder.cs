@@ -11,7 +11,7 @@ namespace ReviewTool
 
         public FileNameBuilder(int maxDigits)
         {
-            _maxDigitLength = maxDigits;
+            _maxDigitLength = Math.Max(3, maxDigits);
             Span<char> emptyNameSpan = stackalloc char[_maxDigitLength];
             emptyNameSpan.Fill('0');
             emptyName = new string(emptyNameSpan);
@@ -111,6 +111,7 @@ namespace ReviewTool
             {
                 hasPageNumber = false;
                 var uniqueEmptyName = GetUniqueBaseName(emptyName);
+                _usedBaseNames.Add(uniqueEmptyName);
                 return string.Concat(uniqueEmptyName, ext);
             }
             ReadOnlySpan<char> trimmedNewNameSpan = newName.Trim();

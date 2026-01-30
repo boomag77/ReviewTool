@@ -3,7 +3,9 @@ using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Security.Policy;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,11 +21,13 @@ public partial class MainWindow : Window
 {
     private struct ReviewStat
     {
-        public int notReviewed;
-        public List<string> ApprovedPages;
-        public List<string> BadOriginalPages;
-        public List<string> OvercuttedPages;
-        public List<int> SavedPages;
+        public string[] NotReviewedPages;
+        public string[] ApprovedPages;
+        public string[] BadOriginalPages;
+        public string[] OvercuttedPages;
+        public string[] SavedPages;
+        public int[] MissingPages;
+        public int MaxPageNumber;
     }
 
     public static readonly RoutedCommand NextImageCommand = new();
@@ -52,6 +56,8 @@ public partial class MainWindow : Window
     private double _magnifierSize = 240.0;
     private int? _lastSuggestedNumber;
     private readonly Dictionary<ImageFileItem, string> _suggestedNames = new();
+
+    private string _originalFolderPath = string.Empty;
 
     // readonly FileNameBuilder _fileNameBuilder;
 
@@ -158,6 +164,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        _originalFolderPath = originalFolder;
+
         var imageFilesDigitsNumber = _fileProcessor.GetMaxDigitsInImageFiles(originalFolder);
 
         _isInitialReview = true;
@@ -205,83 +213,55 @@ public partial class MainWindow : Window
         FocusWindowForInputDeferred();
     }
 
-    private static List<int> CollectMissing(ReadOnlySpan<int> a)
-    {
-        var missing = new List<int>();
-        if (a == null || a.Length < 2) return missing;
-
-        for (int i = 1; i < a.Length; i++)
-        {
-            int prev = a[i - 1];
-            int cur = a[i];
-
-            if (cur <= prev) continue;
-
-            for (int x = prev + 1; x < cur; x++)
-                missing.Add(x);
-        }
-
-        return missing;
-    }
 
     private async Task FinishInitialReviewAsync()
     {
-        ReviewStat taskResult = await PersistInitialReviewResultsAsync();
-        var missingPages = new List<int>();
-        if (taskResult.SavedPages.Count > 0)
-        {
-            var savedPages = taskResult.SavedPages;
-            savedPages.Sort();
-            ReadOnlySpan<int> savedPagesSpan = CollectionsMarshal.AsSpan(savedPages);
-            missingPages = CollectMissing(savedPagesSpan);
-        }
-        var totalImagesToReview = TotalImagesToReview;
+        var actionResult = MessageBox.Show(
+            this,
+            "Choose what to do next:\n\nYes = Perform renumbering and save files\nNo = Only save review results to TSV",
+            "Initial Review",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Question);
 
-        ClearReviewState(clearProcessed: true);
-        _isInitialReview = false;
-        _initialReviewFolder = null;
-        _viewModel.IsInitialReview = false;
-        _viewModel.InitialReviewButtonText = "Start Initial Review...";
-        _lastSuggestedNumber = null;
-        _suggestedNames.Clear();
-
-        var reviewedCount = totalImagesToReview - taskResult.notReviewed;
-        double sourceQuality = Math.Round((double)taskResult.ApprovedPages.Count / reviewedCount, 2) * 100;
-        bool isSuccessedReview = true;
-        List<string> reportRows = new(7);
-
-        reportRows.Add($"Total images: {totalImagesToReview}\n");
-        reportRows.Add($"Approved: {taskResult.ApprovedPages.Count}\n\n");
-        if (taskResult.notReviewed > 0)
+        if (actionResult == MessageBoxResult.Cancel)
         {
-            isSuccessedReview = false;
-            reportRows.Add($"Not reviewed: {taskResult.notReviewed}\n\n");
+            return;
         }
-        if (taskResult.BadOriginalPages.Count > 0)
-        {
-            isSuccessedReview = false;
-            var badOriginalPagesNumbers = string.Join(", ", taskResult.BadOriginalPages);
-            reportRows.Add($"Bad Originals ({taskResult.BadOriginalPages.Count}): {badOriginalPagesNumbers}\n\n");
-        }
-        if (taskResult.OvercuttedPages.Count > 0)
-        {
-            isSuccessedReview = false;
-            var overcuttedPagesNumbers = string.Join(", ", taskResult.OvercuttedPages);
-            reportRows.Add($"Overcutted ({taskResult.OvercuttedPages.Count}): {overcuttedPagesNumbers}\n\n");
-        }
-        if (missingPages.Count > 0)
-        {
-            isSuccessedReview = false;
-            var missingPagesString = string.Join(", ", missingPages);
-            reportRows.Add($"Missing pages ({missingPages.Count}): {missingPagesString}\n\n");
-        }
-        reportRows.Add($"Estimated source images quality: {sourceQuality}");
 
-        string statString = BuildReportMessage(reportRows);
+        ReviewStat taskResult;
+        List<ImageFileMappingInfo> mappingInfo = new List<ImageFileMappingInfo>();
 
-        var messageBoxImage = isSuccessedReview ? MessageBoxImage.Information : MessageBoxImage.Warning;
-        
-        MessageBox.Show(this, $"Initial Review Finished:\n\n{statString}", "Review report", MessageBoxButton.OK, messageBoxImage);
+        if (actionResult == MessageBoxResult.Yes)
+        {
+            (taskResult, mappingInfo) = await CreateInitialReviewResultAsync();
+            var ok = await PerformMappingToAsync(_originalFolderPath, mappingInfo);
+            if (!ok)
+            {
+                return;
+            }
+
+            ClearReviewState(clearProcessed: true);
+            _isInitialReview = false;
+            _initialReviewFolder = null;
+            _viewModel.IsInitialReview = false;
+            _viewModel.InitialReviewButtonText = "Start Initial Review...";
+            _lastSuggestedNumber = null;
+            _suggestedNames.Clear();
+
+        }
+        else
+        {
+            (taskResult, mappingInfo) = await CreateInitialReviewResultAsync();
+        }
+
+        if (actionResult == MessageBoxResult.No)
+        {
+            var outputFolder = SelectFolder("Select folder to save TSV results");
+            if (!string.IsNullOrWhiteSpace(outputFolder))
+            {
+                CreateAndSaveTsvFile(taskResult, mappingInfo, outputFolder);
+            }
+        }
     }
 
     private static string BuildReportMessage(IReadOnlyList<string> reportRows)
@@ -444,6 +424,57 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Debug.WriteLine($"Error handling overcutted: {ex}");
+        }
+    }
+
+    private async void PerformMapping_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var originalFolder = SelectFolder("Select original images folder");
+            if (string.IsNullOrWhiteSpace(originalFolder))
+            {
+                return;
+            }
+
+            var dialog = new OpenFileDialog
+            {
+                Title = "Select mapping TSV file",
+                Filter = "TSV files (*.tsv)|*.tsv|All files (*.*)|*.*"
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var mappingInfo = ParseMappingInfoFrom(dialog.FileName);
+            if (mappingInfo.Count == 0)
+            {
+                MessageBox.Show(this, "Mapping file is empty or invalid.", "Mapping", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var initialReviewFolderPath = _fileProcessor.GetInitialReviewFolderPath(originalFolder);
+            if (Directory.Exists(initialReviewFolderPath))
+            {
+                var result = MessageBox.Show(this,
+                    $"{Path.GetFileName(initialReviewFolderPath)} already exists. Do you want to proceed?",
+                    "Initial Review",
+                    MessageBoxButton.OKCancel,
+                    MessageBoxImage.Question);
+                if (result != MessageBoxResult.OK)
+                {
+                    return;
+                }
+            }
+
+            _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolder);
+            await PerformMappingToAsync(originalFolder, mappingInfo);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -646,83 +677,450 @@ public partial class MainWindow : Window
         return int.TryParse(s.Slice(0, prefixLen), out value);
     }
 
+    private struct ImageFileMappingInfo
+    {
+        public string OriginalName;
+        public string NewName;
+        public string ReviewStatus;
+        public string RejectReason;
+        public string ReviewDate;
+    }
+
+    private async Task<(ReviewStat folderStat, List<ImageFileMappingInfo>)> CreateInitialReviewResultAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_initialReviewFolder))
+        {
+            return (new ReviewStat(), new List<ImageFileMappingInfo>());
+        }
+        string date = DateTime.UtcNow.ToString("yyyy-MM-dd");
+
+        HashSet<int> pagesWithPageNumbers = new();
+        HashSet<string> notReviewedPages = new();
+        HashSet<string> approvedPages = new();
+        HashSet<string> badOriginalPages = new();
+        HashSet<string> overcuttedPages = new();
+        HashSet<int> missingPages = new();
+
+        var items = _viewModel.OriginalFiles.ToList();
+        var itemsCount = items.Count;
+        var maxIndex = itemsCount;
+
+        var maxDigitsLen = maxIndex.ToString().Length;
+        var fileNameBuilder = new FileNameBuilder(maxDigitsLen);
+        int maxPageNumber = 0;
+        List<ImageFileMappingInfo> folderMappingInfo = new List<ImageFileMappingInfo>(itemsCount);
+        await Task.Run(() =>
+        {
+            var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
+
+            for (int i = 0; i < itemsCount; i++)
+            {
+
+                var newFileName = fileNameBuilder.BuildReviewedFileName(items[i].FilePath, items[i].NewFileName, out bool hasPageNumber);
+                if (TryGetNumericPrefix(newFileName.AsSpan(), out var pageNumber, out _)
+                    && pageNumber > 0)
+                {
+                    pagesWithPageNumbers.Add(pageNumber);
+                    maxPageNumber = Math.Max(maxPageNumber, pageNumber);
+                }
+                switch (items[i].ReviewStatus)
+                {
+                    case ImageFileItem.ReviewStatusType.Pending:
+
+                        ReadOnlySpan<char> originalFileName = Path.GetFileNameWithoutExtension(items[i].FilePath.AsSpan());
+                        var notReviewedFileName = string.Concat("_nr_", originalFileName);
+                        notReviewedPages.Add(originalFileName.ToString());
+                        break;
+
+                    case ImageFileItem.ReviewStatusType.Approved:
+                        approvedPages.Add(newFileName);
+                        break;
+
+                    case ImageFileItem.ReviewStatusType.Rejected:
+                        if (items[i].RejectReason == ImageFileItem.RejectReasonType.BadOriginal)
+                        {
+                            badOriginalPages.Add(newFileName);
+                        }
+                        else if (items[i].RejectReason == ImageFileItem.RejectReasonType.Overcutted)
+                        {
+                            overcuttedPages.Add(newFileName);
+                        }
+                        break;
+                }
+
+                ImageFileMappingInfo itemMappingInfo = new ImageFileMappingInfo
+                {
+                    OriginalName = items[i].FileName,
+                    NewName = newFileName,
+                    ReviewStatus = items[i].ReviewStatus.ToString(),
+                    RejectReason = items[i].RejectReason.ToString(),
+                    ReviewDate = date
+                };
+                folderMappingInfo[i] = itemMappingInfo;
+            }
+        });
+        for (int i = 1; i <= maxPageNumber; i++)
+        {
+            if (!pagesWithPageNumbers.Contains(i))
+            {
+                missingPages.Add(i);
+            }
+        }
+        return (new ReviewStat
+        {
+            NotReviewedPages = notReviewedPages.ToArray(),
+            ApprovedPages = approvedPages.ToArray(),
+            BadOriginalPages = badOriginalPages.ToArray(),
+            OvercuttedPages = overcuttedPages.ToArray(),
+            MissingPages = missingPages.ToArray(),
+            MaxPageNumber = maxPageNumber,
+
+        }, folderMappingInfo);
+    }
+
+    private void CreateAndSaveTsvFile(ReviewStat folderStat, List<ImageFileMappingInfo> mappingInfo, string outputFolder)
+    {
+        if (string.IsNullOrWhiteSpace(outputFolder))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(outputFolder);
+
+        static string Sanitize(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            return value.Replace("\t", " ").Replace("\r", " ").Replace("\n", " ");
+        }
+
+        static string JoinItems<T>(IEnumerable<T>? items)
+        {
+            if (items == null)
+            {
+                return string.Empty;
+            }
+
+            return string.Join(", ", items);
+        }
+
+        var statsBuilder = new StringBuilder();
+        statsBuilder.AppendLine("Parameter\tCount\tPagesList");
+        statsBuilder.AppendLine($"Approved\t{folderStat.ApprovedPages?.Length ?? 0}\t{Sanitize(JoinItems(folderStat.ApprovedPages ?? Array.Empty<string>()))}");
+        statsBuilder.AppendLine($"Not reviewed\t{folderStat.NotReviewedPages?.Length ?? 0}\t{Sanitize(JoinItems(folderStat.NotReviewedPages ?? Array.Empty<string>()))}");
+        statsBuilder.AppendLine($"Bad originals\t{folderStat.BadOriginalPages?.Length ?? 0}\t{Sanitize(JoinItems(folderStat.BadOriginalPages ?? Array.Empty<string>()))}");
+        statsBuilder.AppendLine($"Overcutted\t{folderStat.OvercuttedPages?.Length ?? 0}\t{Sanitize(JoinItems(folderStat.OvercuttedPages ?? Array.Empty<string>()))}");
+        statsBuilder.AppendLine($"Missing pages\t{folderStat.MissingPages?.Length ?? 0}\t{Sanitize(JoinItems(folderStat.MissingPages ?? Array.Empty<int>()))}");
+
+        var statsPath = Path.Combine(outputFolder, "InitialReviewStats.tsv");
+        File.WriteAllText(statsPath, statsBuilder.ToString(), Encoding.UTF8);
+
+        var mappingBuilder = new StringBuilder();
+        mappingBuilder.AppendLine("OriginalName\tNewName\tReviewStatus\tRejectReason\tReviewDate");
+        if (mappingInfo != null)
+        {
+            foreach (var item in mappingInfo)
+            {
+                mappingBuilder.Append(Sanitize(item.OriginalName));
+                mappingBuilder.Append('\t');
+                mappingBuilder.Append(Sanitize(item.NewName));
+                mappingBuilder.Append('\t');
+                mappingBuilder.Append(Sanitize(item.ReviewStatus));
+                mappingBuilder.Append('\t');
+                mappingBuilder.Append(Sanitize(item.RejectReason));
+                mappingBuilder.Append('\t');
+                mappingBuilder.AppendLine(Sanitize(item.ReviewDate));
+            }
+        }
+
+        var baseName = string.IsNullOrWhiteSpace(_originalFolderPath)
+            ? "InitialReviewMapping"
+            : Path.GetFileName(Path.TrimEndingDirectorySeparator(_originalFolderPath));
+        var mappingPath = Path.Combine(outputFolder, $"{baseName}.irm");
+        File.WriteAllText(mappingPath, mappingBuilder.ToString(), Encoding.UTF8);
+    }
+
+    private static List<ImageFileMappingInfo> ParseMappingInfoFrom(string mappingInfoFilePath)
+    {
+        var result = new List<ImageFileMappingInfo>();
+        if (string.IsNullOrWhiteSpace(mappingInfoFilePath) || !File.Exists(mappingInfoFilePath))
+        {
+            return result;
+        }
+
+        bool isFirstLine = true;
+        foreach (var line in File.ReadLines(mappingInfoFilePath))
+        {
+            if (isFirstLine)
+            {
+                isFirstLine = false;
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var parts = line.Split('\t');
+            if (parts.Length < 5)
+            {
+                continue;
+            }
+
+            result.Add(new ImageFileMappingInfo
+            {
+                OriginalName = parts[0],
+                NewName = parts[1],
+                ReviewStatus = parts[2],
+                RejectReason = parts[3],
+                ReviewDate = parts[4]
+            });
+        }
+
+        return result;
+    }
+
+    private async Task<bool> PerformMappingToAsync(string originalImagesFolderPath, List<ImageFileMappingInfo> mappingInfo)
+    {
+        if (string.IsNullOrWhiteSpace(originalImagesFolderPath)
+            || string.IsNullOrWhiteSpace(_initialReviewFolder)
+            || mappingInfo is null
+            || mappingInfo.Count == 0)
+        {
+            return false;
+        }
+
+        var folderFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in _fileProcessor.ListImageFiles(originalImagesFolderPath))
+        {
+            var name = Path.GetFileName(path);
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                folderFiles.Add(name);
+            }
+        }
+
+        var mappingFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in mappingInfo)
+        {
+            var name = item.OriginalName;
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                mappingFiles.Add(name);
+            }
+        }
+
+        if (!folderFiles.SetEquals(mappingFiles))
+        {
+            MessageBox.Show(this,
+                "Original file names do not match the mapping file. Mapping was not performed.",
+                "Mapping mismatch",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        var issueReport = new StringBuilder();
+        var totalFiles = 0;
+        var approvedCount = 0;
+        var rejectedCount = 0;
+        var missingCount = 0;
+
+        await Task.Run(() =>
+        {
+            var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
+            var pagesWithNumbers = new HashSet<int>();
+            var maxPageNumber = 0;
+
+            foreach (var item in mappingInfo)
+            {
+                if (string.IsNullOrWhiteSpace(item.OriginalName)
+                    || string.IsNullOrWhiteSpace(item.NewName))
+                {
+                    continue;
+                }
+
+                totalFiles++;
+                var sourcePath = Path.Combine(originalImagesFolderPath, item.OriginalName);
+                if (!File.Exists(sourcePath))
+                {
+                    continue;
+                }
+
+                if (!Enum.TryParse(item.ReviewStatus, true, out ImageFileItem.ReviewStatusType status))
+                {
+                    status = ImageFileItem.ReviewStatusType.Pending;
+                }
+
+                if (!Enum.TryParse(item.RejectReason, true, out ImageFileItem.RejectReasonType rejectReason))
+                {
+                    rejectReason = ImageFileItem.RejectReasonType.None;
+                }
+
+                if (TryGetNumericPrefix(item.NewName.AsSpan(), out var pageNumber, out _)
+                    && pageNumber > 0)
+                {
+                    pagesWithNumbers.Add(pageNumber);
+                    maxPageNumber = Math.Max(maxPageNumber, pageNumber);
+                }
+
+                switch (status)
+                {
+                    case ImageFileItem.ReviewStatusType.Pending:
+                        var originalBase = Path.GetFileNameWithoutExtension(item.OriginalName);
+                        var notReviewedFileName = string.Concat("_nr_", originalBase);
+                        _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
+                        issueReport.Append(item.NewName);
+                        issueReport.Append('\t');
+                        issueReport.AppendLine("Not Reviewed");
+                        break;
+
+                    case ImageFileItem.ReviewStatusType.Approved:
+                        _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => item.NewName);
+                        approvedCount++;
+                        break;
+
+                    case ImageFileItem.ReviewStatusType.Rejected:
+                        rejectedCount++;
+                        var suffix = rejectReason switch
+                        {
+                            ImageFileItem.RejectReasonType.BadOriginal => "_bo",
+                            ImageFileItem.RejectReasonType.Overcutted => "_ct",
+                            _ => "_rejected",
+                        };
+                        _fileProcessor.SaveFile(sourcePath, p => p, rejectedFolder, _ => item.NewName);
+                        var suffixed = _fileProcessor.BuildSuffixedFileName(item.NewName, suffix);
+                        _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => suffixed);
+                        var issueText = rejectReason == ImageFileItem.RejectReasonType.None
+                            ? "Rejected"
+                            : rejectReason.ToString();
+                        issueReport.Append(item.NewName);
+                        issueReport.Append('\t');
+                        issueReport.AppendLine(issueText);
+                        break;
+                }
+            }
+
+            for (var i = 1; i <= maxPageNumber; i++)
+            {
+                if (!pagesWithNumbers.Contains(i))
+                {
+                    issueReport.Append(i);
+                    issueReport.Append('\t');
+                    issueReport.AppendLine("Missing");
+                    missingCount++;
+                }
+            }
+        });
+
+        var reportText = issueReport.ToString();
+        if (!string.IsNullOrWhiteSpace(reportText))
+        {
+            Clipboard.SetText(reportText);
+        }
+
+        MessageBox.Show(this,
+            $"Mapping performed successfully.\n\nTotal files: {totalFiles}\nApproved: {approvedCount}\nRejected: {rejectedCount}\nMissing: {missingCount}\n\nIssue report has been copied to the clipboard.",
+            "Mapping complete",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+        return true;
+    }
+
+
     private async Task<ReviewStat> PersistInitialReviewResultsAsync()
     {
         if (string.IsNullOrWhiteSpace(_initialReviewFolder))
         {
             return new ReviewStat();
         }
-        int notReviewed = 0;
+        HashSet<int> pagesWithPageNumbers = new();
+        HashSet<string> notReviewedPages = new();
         HashSet<string> approvedPages = new();
-        List<string> badOriginalPages = new();
-        List<string> overcuttedPages = new();
-        List<int> savedPages = new();
+        HashSet<string> badOriginalPages = new();
+        HashSet<string> overcuttedPages = new();
+        HashSet<int> missingPages = new();
+
         var items = _viewModel.OriginalFiles.ToList();
-        var maxIndex = items.Count;
+        var itemsCount = items.Count;
+        var maxIndex = itemsCount;
+        
         var maxDigitsLen = maxIndex.ToString().Length;
         var fileNameBuilder = new FileNameBuilder(maxDigitsLen);
+        int maxPageNumber = 0;
         await Task.Run(() =>
         {
             var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
 
-            foreach (var item in items)
+            for (int i = 0; i < itemsCount; i++)
             {
-                var newFileName = fileNameBuilder.BuildReviewedFileName(item.FilePath, item.NewFileName, out bool hasPageNumber);
-                _ = TryGetNumericPrefix(newFileName, out int pageNumber, out int prefixLen);
-                int currentPageNumber = pageNumber;
-                if (currentPageNumber >= 0 && hasPageNumber)
+
+                var newFileName = fileNameBuilder.BuildReviewedFileName(items[i].FilePath, items[i].NewFileName, out bool hasPageNumber);
+                if (TryGetNumericPrefix(newFileName.AsSpan(), out var pageNumber, out _)
+                    && pageNumber > 0)
                 {
-                    savedPages.Add(currentPageNumber);
+                    pagesWithPageNumbers.Add(pageNumber);
+                    maxPageNumber = Math.Max(maxPageNumber, pageNumber);
                 }
-                switch (item.ReviewStatus)
+                switch (items[i].ReviewStatus)
                 {
                     case ImageFileItem.ReviewStatusType.Pending:
-                        //var skippedFolder = _fileProcessor.EnsureSkippedFolder(_initialReviewFolder);
-                        //_fileProcessor.SaveFile(item.FilePath, p => p, skippedFolder);
-                        notReviewed++;
+
+                        ReadOnlySpan<char> originalFileName = Path.GetFileNameWithoutExtension(items[i].FilePath.AsSpan());
+                        var notReviewedFileName = string.Concat("_nr_", originalFileName);
+                        notReviewedPages.Add(originalFileName.ToString());
+                        _fileProcessor.SaveFile(items[i].FilePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
                         continue;
 
                     case ImageFileItem.ReviewStatusType.Approved:
                         approvedPages.Add(newFileName);
-                        _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => newFileName);
+                        _fileProcessor.SaveFile(items[i].FilePath, p => p, _initialReviewFolder, _ => newFileName);
                         continue;
 
                     case ImageFileItem.ReviewStatusType.Rejected:
-                        var suffix = item.RejectReason switch
+                        var suffix = items[i].RejectReason switch
                         {
                             ImageFileItem.RejectReasonType.BadOriginal => "_bo",
                             ImageFileItem.RejectReasonType.Overcutted => "_ct",
                             _ => "_rejected",
                         };
-                        if (item.RejectReason == ImageFileItem.RejectReasonType.BadOriginal && hasPageNumber)
+                        if (items[i].RejectReason == ImageFileItem.RejectReasonType.BadOriginal && hasPageNumber)
                         {
                             badOriginalPages.Add(newFileName);
                         }
-                        else if (item.RejectReason == ImageFileItem.RejectReasonType.Overcutted && hasPageNumber)
+                        else if (items[i].RejectReason == ImageFileItem.RejectReasonType.Overcutted && hasPageNumber)
                         {
                             overcuttedPages.Add(newFileName);
                         }
 
                         //var rejectedBaseName = BuildReviewedFileName(item.FilePath, item.NewFileName);
-                        _fileProcessor.SaveFile(item.FilePath, p => p, rejectedFolder, _ => newFileName);
+                        _fileProcessor.SaveFile(items[i].FilePath, p => p, rejectedFolder, _ => newFileName);
                         var suffixed = _fileProcessor.BuildSuffixedFileName(newFileName, suffix);
-                        _fileProcessor.SaveFile(item.FilePath, p => p, _initialReviewFolder, _ => suffixed);
-                        continue;
-                    default:
+                        _fileProcessor.SaveFile(items[i].FilePath, p => p, _initialReviewFolder, _ => suffixed);
                         continue;
                 }
-
             }
         });
-        //badOriginalPages.RemoveAll(approvedPages.Contains);
-        //overcuttedPages.RemoveAll(approvedPages.Contains);
+        for (int i = 1; i <= maxPageNumber; i++)
+        {
+            if (!pagesWithPageNumbers.Contains(i))
+            {
+                missingPages.Add(i);
+            }
+        }
         return new ReviewStat
         {
-            notReviewed = notReviewed,
-            ApprovedPages = approvedPages.ToList(),
-            BadOriginalPages = badOriginalPages,
-            OvercuttedPages = overcuttedPages,
-            SavedPages = savedPages
+            NotReviewedPages = notReviewedPages.ToArray(),
+            ApprovedPages = approvedPages.ToArray(),
+            BadOriginalPages = badOriginalPages.ToArray(),
+            OvercuttedPages = overcuttedPages.ToArray(),
+            MissingPages = missingPages.ToArray(),
+            MaxPageNumber = maxPageNumber,
+            
         };
     }
 

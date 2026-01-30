@@ -95,6 +95,9 @@
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="{Binding InitialReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False"
                             Click="StartInitialReview_Click" />     
+                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Perform mapping..." Margin="6,0,0,0"
+                            Focusable="False"
+                            Click="PerformMapping_Click" />
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="{Binding FinalReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False" IsEnabled="False"
                             Click="StartFinalReview_Click" />
