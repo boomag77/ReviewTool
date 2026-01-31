@@ -13,13 +13,13 @@
         <KeyBinding Key="Enter" Command="{x:Static local:MainWindow.NextImageCommand}" />
         <KeyBinding Key="Left" Command="{x:Static local:MainWindow.PreviousImageCommand}" />
         <KeyBinding Key="B" Command="{x:Static local:MainWindow.BadOriginalCommand}" />
-        <KeyBinding Key="C" Command="{x:Static local:MainWindow.OvercuttedCommand}" />
+        <KeyBinding Key="R" Command="{x:Static local:MainWindow.RescanCommand}" />
     </Window.InputBindings>
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static local:MainWindow.NextImageCommand}" Executed="NextImageCommand_Executed" />
         <CommandBinding Command="{x:Static local:MainWindow.PreviousImageCommand}" Executed="PreviousImageCommand_Executed" />
         <CommandBinding Command="{x:Static local:MainWindow.BadOriginalCommand}" Executed="BadOriginalCommand_Executed" />
-        <CommandBinding Command="{x:Static local:MainWindow.OvercuttedCommand}" Executed="OvercuttedCommand_Executed" />
+        <CommandBinding Command="{x:Static local:MainWindow.RescanCommand}" Executed="RescanCommand_Executed" />
     </Window.CommandBindings>
     <Window.Resources>
         <SolidColorBrush x:Key="PipelineCardBackgroundBrush" Color="#2F3136"/>
@@ -81,6 +81,15 @@
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="Margin" Value="0,0,8,8"/>
         </Style>
+
+        <Style x:Key="PerformMappingButtonStyle" TargetType="Button" BasedOn="{StaticResource ElevatedRoundedButton}">
+            <Setter Property="IsEnabled" Value="True"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsInitialReview}" Value="True">
+                    <Setter Property="IsEnabled" Value="False"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <DockPanel>
@@ -95,7 +104,7 @@
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="{Binding InitialReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False"
                             Click="StartInitialReview_Click" />     
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="Perform mapping..." Margin="6,0,0,0"
+                    <Button Style="{StaticResource PerformMappingButtonStyle}" Content="Perform mapping..." Margin="6,0,0,0"
                             Focusable="False"
                             Click="PerformMapping_Click" />
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="{Binding FinalReviewButtonText}" Margin="6,0,0,0"
@@ -297,8 +306,8 @@
                         </Grid.ColumnDefinitions>
                         <Button Grid.Row="0" Grid.Column="0" Style="{StaticResource ActionCompactButton}" Content="Bad original"
                                 Click="BadOriginal_Click" />
-                        <Button Grid.Row="1" Grid.Column="0" Style="{StaticResource ActionCompactButton}" Content="Overcutted"
-                                Click="Overcutted_Click" />
+                        <Button Grid.Row="1" Grid.Column="0" Style="{StaticResource ActionCompactButton}" Content="Rescan"
+                                Click="Rescan_Click" />
                         <Button Grid.Row="2" Grid.Column="0" Style="{StaticResource ActionCompactButton}" Content="OK"
                                 Margin="0,0,8,0" Click="OkReview_Click" />
                     </Grid>

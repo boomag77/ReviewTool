@@ -18,7 +18,7 @@ public sealed class ImageFileItem : INotifyPropertyChanged
     {
         None,
         BadOriginal,
-        Overcutted
+        Rescan
     }
 
 
@@ -87,7 +87,7 @@ public sealed class ImageFileItem : INotifyPropertyChanged
             ReviewStatusType.Approved => "AC",
             ReviewStatusType.Rejected => RejectReason switch
             {
-                RejectReasonType.Overcutted => "CT",
+                RejectReasonType.Rescan => "RS",
                 RejectReasonType.BadOriginal => "BO",
                 _ => "RE",
             },

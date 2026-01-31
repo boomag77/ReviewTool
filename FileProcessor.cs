@@ -10,14 +10,17 @@ namespace ReviewTool;
 
 public sealed class FileProcessor
 {
+
+
     private readonly FrozenSet<string> _imageExtensions =
         new[] { ".bmp", ".gif", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp" }
             .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
+
     public string EnsureInitialReviewFolder(string originalFolder)
     {
         var initialFolder = GetInitialReviewFolderPath(originalFolder);
-        EnsureDirectory(initialFolder);
+        Directory.CreateDirectory(initialFolder);
         return initialFolder;
     }
 
@@ -33,14 +36,14 @@ public sealed class FileProcessor
     public string EnsureRejectedFolder(string initialFolder)
     {
         var rejectedFolder = Path.Combine(initialFolder, "Rejected");
-        EnsureDirectory(rejectedFolder);
+        Directory.CreateDirectory(rejectedFolder);
         return rejectedFolder;
     }
 
     public string EnsureSkippedFolder(string initialFolder)
     {
         var skippedFolder = Path.Combine(initialFolder, "Skipped");
-        EnsureDirectory(skippedFolder);
+        Directory.CreateDirectory(skippedFolder);
         return skippedFolder;
     }
 
@@ -49,7 +52,7 @@ public sealed class FileProcessor
         var sourcePath = sourcePathSelector(item);
         var fileName = destinationNameSelector is null ? Path.GetFileName(sourcePath) : destinationNameSelector(item);
         var destinationPath = Path.Combine(destinationFolder, fileName);
-        EnsureDirectory(destinationFolder);
+        Directory.CreateDirectory(destinationFolder);
         File.Copy(sourcePath, destinationPath, true);
     }
 
@@ -156,10 +159,6 @@ public sealed class FileProcessor
         return null;
     }
 
-    private void EnsureDirectory(string path)
-    {
-        Directory.CreateDirectory(path);
-    }
 
     public void ClearDirectory(string path)
     {
