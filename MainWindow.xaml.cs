@@ -871,6 +871,11 @@ public partial class MainWindow : Window
             MessageBox.Show(this, $"Failed to save mapping file:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
+        MessageBox.Show(this,
+            "Your initial review results were saved successfully.",
+            "Information",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
         return true;
     }
 
@@ -1054,17 +1059,76 @@ public partial class MainWindow : Window
         });
 
         var reportText = issueReport.ToString();
-        if (!string.IsNullOrWhiteSpace(reportText))
-        {
-            Clipboard.SetText(reportText);
-        }
-
-        MessageBox.Show(this,
-            $"Mapping performed successfully.\n\nTotal files: {totalFiles}\nApproved: {approvedCount}\nRejected: {rejectedCount}\nMissing: {missingCount}\n\nIssue report has been copied to the clipboard.",
-            "Mapping complete",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        var summaryText =
+            $"Mapping performed successfully.\n\nTotal files: {totalFiles}\nApproved: {approvedCount}\nRejected: {rejectedCount}\nMissing: {missingCount}";
+        ShowMappingCompleteDialog(summaryText, reportText);
         return true;
+    }
+
+    private void ShowMappingCompleteDialog(string summaryText, string reportText)
+    {
+        var dialog = new Window
+        {
+            Owner = this,
+            Title = "Mapping complete",
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize,
+            MinWidth = 360,
+            Background = SystemColors.ControlBrush,
+        };
+
+        var root = new StackPanel
+        {
+            Margin = new Thickness(16),
+            Orientation = Orientation.Vertical
+        };
+
+        root.Children.Add(new TextBlock
+        {
+            Text = summaryText,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12),
+            Foreground = SystemColors.ControlTextBrush,
+        });
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        var copyButton = new Button
+        {
+            Content = "Copy issues to clipboard",
+            Margin = new Thickness(0, 0, 8, 0),
+            Padding = new Thickness(12, 4, 12, 4),
+            IsEnabled = !string.IsNullOrWhiteSpace(reportText),
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        copyButton.Click += (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(reportText))
+            {
+                Clipboard.SetText(reportText);
+            }
+        };
+
+        var okButton = new Button
+        {
+            Content = "OK",
+            MinWidth = 80,
+            Padding = new Thickness(12, 4, 12, 4),
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        okButton.Click += (_, _) => dialog.Close();
+
+        buttons.Children.Add(copyButton);
+        buttons.Children.Add(okButton);
+        root.Children.Add(buttons);
+
+        dialog.Content = root;
+        dialog.ShowDialog();
     }
 
 
