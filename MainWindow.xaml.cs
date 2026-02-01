@@ -223,14 +223,8 @@ public partial class MainWindow : Window
 
     private async Task FinishInitialReviewAsync()
     {
-        var actionResult = MessageBox.Show(
-            this,
-            "Choose what to do next:\n\nYes = Perform renumbering and save files\nNo = Only save review results to file",
-            "Initial Review",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Question);
-
-        if (actionResult == MessageBoxResult.Cancel)
+        var actionResult = ShowInitialReviewFinishDialog();
+        if (actionResult == InitialReviewFinishAction.Cancel)
         {
             return;
         }
@@ -243,7 +237,7 @@ public partial class MainWindow : Window
         }
         
 
-        if (actionResult == MessageBoxResult.Yes)
+        if (actionResult == InitialReviewFinishAction.Apply)
         {
             var initialFolderPath = _fileProcessor.GetInitialReviewFolderPath(_originalFolderPath);
             if (Directory.Exists(initialFolderPath))
@@ -268,7 +262,7 @@ public partial class MainWindow : Window
                 return;
             }
         }
-        else
+        else if (actionResult == InitialReviewFinishAction.SaveToFile)
         {
             if (!TryCreateAndSaveTsvFile(capturedtaskResult, _capturedMappingInfo))
             {
@@ -300,6 +294,115 @@ public partial class MainWindow : Window
         _viewModel.FinalReviewButtonText = "Start Final Review...";
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
+    }
+
+    private enum InitialReviewFinishAction
+    {
+        Apply,
+        SaveToFile,
+        Cancel
+    }
+
+    private InitialReviewFinishAction ShowInitialReviewFinishDialog()
+    {
+        var dialog = new Window
+        {
+            Owner = this,
+            Title = "Initial Review",
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize,
+            MinWidth = 420,
+            Background = SystemColors.ControlBrush,
+        };
+
+        var root = new StackPanel
+        {
+            Margin = new Thickness(16),
+            Orientation = Orientation.Vertical
+        };
+
+        var contentRow = new DockPanel { Margin = new Thickness(0, 0, 0, 16) };
+        var icon = System.Drawing.SystemIcons.Question;
+        var iconSource = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+            icon.Handle,
+            Int32Rect.Empty,
+            BitmapSizeOptions.FromWidthAndHeight(32, 32));
+        iconSource.Freeze();
+
+        var iconImage = new Image
+        {
+            Source = iconSource,
+            Width = 32,
+            Height = 32,
+            Margin = new Thickness(0, 2, 12, 0)
+        };
+        DockPanel.SetDock(iconImage, Dock.Left);
+        contentRow.Children.Add(iconImage);
+
+        var text = new TextBlock
+        {
+            Text = "Choose what to do next:\n\nApply = Perform renumbering and save files\nSave to file = Only save review results to file",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = SystemColors.ControlTextBrush,
+        };
+        contentRow.Children.Add(text);
+        root.Children.Add(contentRow);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        InitialReviewFinishAction result = InitialReviewFinishAction.Cancel;
+
+        var applyButton = new Button
+        {
+            Content = "Apply",
+            MinWidth = 80,
+            Margin = new Thickness(0, 0, 8, 0),
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        applyButton.Click += (_, _) =>
+        {
+            result = InitialReviewFinishAction.Apply;
+            dialog.Close();
+        };
+
+        var saveButton = new Button
+        {
+            Content = "Save to file",
+            MinWidth = 90,
+            Margin = new Thickness(0, 0, 8, 0),
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        saveButton.Click += (_, _) =>
+        {
+            result = InitialReviewFinishAction.SaveToFile;
+            dialog.Close();
+        };
+
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            MinWidth = 80,
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        cancelButton.Click += (_, _) =>
+        {
+            result = InitialReviewFinishAction.Cancel;
+            dialog.Close();
+        };
+
+        buttons.Children.Add(applyButton);
+        buttons.Children.Add(saveButton);
+        buttons.Children.Add(cancelButton);
+        root.Children.Add(buttons);
+
+        dialog.Content = root;
+        dialog.ShowDialog();
+        return result;
     }
 
 
@@ -960,6 +1063,7 @@ public partial class MainWindow : Window
             return false;
         }
 
+        var bookName = Path.GetFileName(_originalFolderPath) ?? "undefined";
         var issueReport = new StringBuilder();
         var totalFiles = 0;
         var approvedCount = 0;
@@ -1008,9 +1112,11 @@ public partial class MainWindow : Window
                 switch (status)
                 {
                     case ImageFileItem.ReviewStatusType.Pending:
-                        var originalBase = Path.GetFileNameWithoutExtension(item.OriginalName);
+                        var originalBase = GetFileNameWithoutExtension(item.NewName.AsSpan());
                         var notReviewedFileName = string.Concat("_nr_", originalBase);
                         _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
+                        issueReport.Append(bookName);
+                        issueReport.Append('\t');
                         issueReport.Append(item.NewName);
                         issueReport.Append('\t');
                         issueReport.AppendLine("Not Reviewed");
@@ -1035,7 +1141,9 @@ public partial class MainWindow : Window
                         var issueText = rejectReason == ImageFileItem.RejectReasonType.None
                             ? "Rejected"
                             : rejectReason.ToString();
-                        issueReport.Append(item.NewName);
+                        issueReport.Append(bookName);
+                        issueReport.Append('\t');
+                        issueReport.Append(GetFileNameWithoutExtension(item.NewName.AsSpan()));
                         issueReport.Append('\t');
                         issueReport.AppendLine(issueText);
                         break;
@@ -1046,6 +1154,9 @@ public partial class MainWindow : Window
             {
                 if (!pagesWithNumbers.Contains(i))
                 {
+                    
+                    issueReport.Append(bookName);
+                    issueReport.Append('\t');
                     issueReport.Append(i);
                     issueReport.Append('\t');
                     issueReport.AppendLine("Missing");
@@ -1063,6 +1174,23 @@ public partial class MainWindow : Window
             $"Mapping performed successfully.\n\nTotal files: {totalFiles}\nApproved: {approvedCount}\nRejected: {rejectedCount}\nMissing: {missingCount}";
         ShowMappingCompleteDialog(summaryText, reportText);
         return true;
+    }
+
+    private static ReadOnlySpan<char> GetFileNameWithoutExtension(ReadOnlySpan<char> fileName)
+    {
+        if (fileName.Length == 0)
+            return new ReadOnlySpan<char>();
+
+        int i = fileName.Length - 1;
+        while (i >= 0 && fileName[i] != '.')
+        {
+            i--;
+        }
+        if (i < 0)
+        {
+            return fileName;
+        }
+        return fileName.Slice(0, i);
     }
 
     private void ShowMappingCompleteDialog(string summaryText, string reportText)
