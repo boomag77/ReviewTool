@@ -15,8 +15,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private ObservableCollection<ImageFileItem> _originalFiles = new();
     private ImageFileItem? _selectedOriginalFile;
     private string _suggestedNumberLabel = string.Empty;
-    private string _initialReviewButtonText = "Start Initial Review...";
-    private string _finalReviewButtonText = "Start Final Review...";
+    private string _initialReviewButtonText = "Start Initial Review";
+    private string _finalReviewButtonText = "Start Final Review";
+    private string _performMappingButtonText = "Perform mapping";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -66,6 +67,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _initialReviewButtonText;
         set => SetField(ref _initialReviewButtonText, value);
+    }
+
+    public string PerformMappingButtonText
+    {
+        get => _performMappingButtonText;
     }
 
     public string FinalReviewButtonText

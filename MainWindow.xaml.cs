@@ -1670,8 +1670,19 @@ public partial class MainWindow : Window
             var center = new Point(cx, cy);
             var lensRect = new Rect(center.X - half, center.Y - half, lensSize, lensSize);
 
-            double viewW = lensSize / _zoom;
-            double viewH = lensSize / _zoom;
+            var scaleX = sourceSize.Width / imageRect.Width;
+            var scaleY = sourceSize.Height / imageRect.Height;
+            if (!double.IsFinite(scaleX) || scaleX <= 0)
+            {
+                scaleX = 1.0;
+            }
+            if (!double.IsFinite(scaleY) || scaleY <= 0)
+            {
+                scaleY = 1.0;
+            }
+
+            double viewW = (lensSize / _zoom) * scaleX;
+            double viewH = (lensSize / _zoom) * scaleY;
             if (viewW > sourceSize.Width) viewW = sourceSize.Width;
             if (viewH > sourceSize.Height) viewH = sourceSize.Height;
 

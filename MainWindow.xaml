@@ -103,8 +103,8 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="{Binding InitialReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False"
-                            Click="StartInitialReview_Click" />     
-                    <Button Style="{StaticResource PerformMappingButtonStyle}" Content="Perform mapping..." Margin="6,0,0,0"
+                            Click="StartInitialReview_Click" />
+                    <Button Style="{StaticResource PerformMappingButtonStyle}" Content="{Binding PerformMappingButtonText}" Margin="6,0,0,0"
                             Focusable="False"
                             Click="PerformMapping_Click" />
                     <Button Style="{StaticResource ElevatedRoundedButton}" Content="{Binding FinalReviewButtonText}" Margin="6,0,0,0"
