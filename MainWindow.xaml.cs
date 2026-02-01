@@ -161,6 +161,23 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CancelReview_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            this,
+            "The review is in progress! Are you sure you want to exit without saving any results?",
+            "Cancel Review",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        CancelInitialReview();
+    }
+
     private async Task StartInitialReviewAsync()
     {
         if (_isInitialReview)
@@ -266,6 +283,21 @@ public partial class MainWindow : Window
         _initialReviewFolder = null;
         _viewModel.IsInitialReview = false;
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
+        _lastSuggestedNumber = null;
+        _suggestedNames.Clear();
+    }
+
+    private void CancelInitialReview()
+    {
+        _capturedMappingInfo.Clear();
+        ClearReviewState(clearProcessed: true);
+        _isInitialReview = false;
+        _isFinalReview = false;
+        _initialReviewFolder = null;
+        _originalFolderPath = string.Empty;
+        _viewModel.IsInitialReview = false;
+        _viewModel.InitialReviewButtonText = "Start Initial Review...";
+        _viewModel.FinalReviewButtonText = "Start Final Review...";
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
     }

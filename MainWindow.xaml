@@ -84,9 +84,41 @@
 
         <Style x:Key="PerformMappingButtonStyle" TargetType="Button" BasedOn="{StaticResource ElevatedRoundedButton}">
             <Setter Property="IsEnabled" Value="True"/>
+            <Setter Property="Visibility" Value="Visible"/>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsInitialReview}" Value="True">
                     <Setter Property="IsEnabled" Value="False"/>
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="FinalReviewButtonStyle" TargetType="Button" BasedOn="{StaticResource ElevatedRoundedButton}">
+            <Setter Property="Visibility" Value="Visible"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsInitialReview}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="CancelReviewButtonStyle" TargetType="Button" BasedOn="{StaticResource ElevatedRoundedButton}">
+            <Setter Property="Background" Value="#8A4A46"/>
+            <Setter Property="Opacity" Value="0.82"/>
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsInitialReview}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="StartInitialReviewButtonStyle" TargetType="Button" BasedOn="{StaticResource ElevatedRoundedButton}">
+            <Setter Property="Opacity" Value="0.82"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsInitialReview}" Value="True">
+                    <Setter Property="Background" Value="#3E6E3A"/>
+                    <Setter Property="Opacity" Value="0.82"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -101,13 +133,16 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="{Binding InitialReviewButtonText}" Margin="6,0,0,0"
+                    <Button Style="{StaticResource StartInitialReviewButtonStyle}" Content="{Binding InitialReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False"
                             Click="StartInitialReview_Click" />
+                    <Button Style="{StaticResource CancelReviewButtonStyle}" Content="Cancel review" Margin="6,0,0,0"
+                            Focusable="False"
+                            Click="CancelReview_Click" />
                     <Button Style="{StaticResource PerformMappingButtonStyle}" Content="{Binding PerformMappingButtonText}" Margin="6,0,0,0"
                             Focusable="False"
                             Click="PerformMapping_Click" />
-                    <Button Style="{StaticResource ElevatedRoundedButton}" Content="{Binding FinalReviewButtonText}" Margin="6,0,0,0"
+                    <Button Style="{StaticResource FinalReviewButtonStyle}" Content="{Binding FinalReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False" IsEnabled="False"
                             Click="StartFinalReview_Click" />
                     
