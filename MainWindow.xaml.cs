@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -259,13 +259,25 @@ public partial class MainWindow : Window
             _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(_originalFolderPath);
             if (!await TryPerformMappingToAsync(_originalFolderPath, _capturedMappingInfo))
             {
+                MessageBox.Show(this, "Failed to perform mapping.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+
                 return;
             }
+            var originalFolderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(_originalFolderPath)) ?? "mapping_file";
+            var fileName = $"{originalFolderName}.tsv";
+            var mappingFilePath = Path.Combine(_originalFolderPath, fileName);
+            if (!TryCreateAndSaveTsvFile(capturedtaskResult, _capturedMappingInfo, mappingFilePath))
+            {
+                MessageBox.Show(this, "Failed to create or save mapping file.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+
+            }
+
         }
         else if (actionResult == InitialReviewFinishAction.SaveToFile)
         {
             if (!TryCreateAndSaveTsvFile(capturedtaskResult, _capturedMappingInfo))
             {
+                MessageBox.Show(this, "Failed to create or save mapping file.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
         }
@@ -870,8 +882,8 @@ public partial class MainWindow : Window
 
                 ImageFileMappingInfo itemMappingInfo = new ImageFileMappingInfo
                 {
-                    OriginalName = items[i].FileName,
-                    NewName = newFileName,
+                    OriginalName = Path.GetFileNameWithoutExtension(items[i].FileName),
+                    NewName = Path.GetFileNameWithoutExtension(newFileName),
                     ReviewStatus = items[i].ReviewStatus.ToString(),
                     RejectReason = items[i].RejectReason.ToString(),
                     ReviewDate = date
@@ -898,9 +910,9 @@ public partial class MainWindow : Window
         }, folderMappingInfo);
     }
 
-    private bool TryCreateAndSaveTsvFile(ReviewStat folderStat, List<ImageFileMappingInfo> mappingInfo)
+
+    private bool TryCreateAndSaveTsvFile(ReviewStat folderStat, List<ImageFileMappingInfo> mappingInfo, string? pathToSave = null, bool namesWithExt = false)
     {
-        
 
         static string Sanitize(string? value)
         {
@@ -936,9 +948,11 @@ public partial class MainWindow : Window
         {
             foreach (var item in mappingInfo)
             {
-                mappingBuilder.Append(Sanitize(item.OriginalName));
+                var originalName = namesWithExt ? item.OriginalName : Path.GetFileNameWithoutExtension(item.OriginalName);
+                var newName = namesWithExt ? item.NewName : Path.GetFileNameWithoutExtension(item.NewName);
+                mappingBuilder.Append(Sanitize(originalName));
                 mappingBuilder.Append('\t');
-                mappingBuilder.Append(Sanitize(item.NewName));
+                mappingBuilder.Append(Sanitize(newName));
                 mappingBuilder.Append('\t');
                 mappingBuilder.Append(Sanitize(item.ReviewStatus));
                 mappingBuilder.Append('\t');
@@ -951,23 +965,28 @@ public partial class MainWindow : Window
         var baseName = string.IsNullOrWhiteSpace(_originalFolderPath)
             ? "InitialReviewMapping"
             : Path.GetFileName(Path.TrimEndingDirectorySeparator(_originalFolderPath));
-        var saveDialog = new SaveFileDialog
-        {
-            Title = "Save mapping file",
-            Filter = "IR mapping TSV files (*.tsv)|*.tsv|All files (*.*)|*.*",
-            FileName = $"{baseName}.tsv",
-            InitialDirectory = _originalFolderPath
-        };
 
-        if (saveDialog.ShowDialog() != true)
+        var mappingFilePath = pathToSave;
+        if (string.IsNullOrWhiteSpace(mappingFilePath))
         {
-            return false;
+            var saveDialog = new SaveFileDialog
+            {
+                Title = "Save mapping file",
+                Filter = "IR mapping TSV files (*.tsv)|*.tsv|All files (*.*)|*.*",
+                FileName = $"{baseName}.tsv",
+                InitialDirectory = _originalFolderPath
+            };
+
+            if (saveDialog.ShowDialog() != true)
+            {
+                return false;
+            }
+            mappingFilePath = saveDialog.FileName;
         }
-
-        var mappingPath = saveDialog.FileName;
+        
         try
         {
-            File.WriteAllText(mappingPath, mappingBuilder.ToString(), Encoding.UTF8);
+            File.WriteAllText(mappingFilePath, mappingBuilder.ToString(), Encoding.UTF8);
         }
         catch (Exception ex)
         {
@@ -1012,18 +1031,18 @@ public partial class MainWindow : Window
 
             result.Add(new ImageFileMappingInfo
             {
-                OriginalName = parts[0],
-                NewName = parts[1],
-                ReviewStatus = parts[2],
-                RejectReason = parts[3],
-                ReviewDate = parts[4]
+                OriginalName = parts[0].Trim(),
+                NewName = parts[1].Trim(),
+                ReviewStatus = parts[2].Trim(),
+                RejectReason = parts[3].Trim(),
+                ReviewDate = parts[4].Trim()
             });
         }
 
         return result;
     }
 
-    private async Task<bool> TryPerformMappingToAsync(string originalImagesFolderPath, List<ImageFileMappingInfo> mappingInfo)
+    private async Task<bool> TryPerformMappingToAsync(string originalImagesFolderPath, IReadOnlyList<ImageFileMappingInfo> mappingInfo)
     {
         if (string.IsNullOrWhiteSpace(originalImagesFolderPath)
             || string.IsNullOrWhiteSpace(_initialReviewFolder)
@@ -1035,27 +1054,43 @@ public partial class MainWindow : Window
 
         int totalFilesToMap = mappingInfo.Count;
 
-        var folderFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var path in _fileProcessor.ListImageFiles(originalImagesFolderPath))
+        
+
+        static FrozenDictionary<string, string> BuildFrozenNameToExt(IReadOnlyList<string> paths)
         {
-            var name = Path.GetFileName(path);
-            if (!string.IsNullOrWhiteSpace(name))
+
+            return paths
+                .Select(p => new
+                {
+                    Name = Path.GetFileNameWithoutExtension(p),
+                    Ext = Path.GetExtension(p)
+                })
+                .Where(x => !string.IsNullOrEmpty(x.Name))      // на всякий
+                .ToFrozenDictionary(x => x.Name, x => x.Ext, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var folderFilesNoExtSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var originalFilesPaths = _fileProcessor.ListImageFiles(originalImagesFolderPath);
+        foreach (var path in originalFilesPaths)
+        {
+            var nameNoExt = Path.GetFileNameWithoutExtension(path);
+            if (!string.IsNullOrWhiteSpace(nameNoExt))
             {
-                folderFiles.Add(name);
+                folderFilesNoExtSet.Add(nameNoExt);
             }
         }
 
-        var mappingFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var mappingFilesNoExtSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in mappingInfo)
         {
-            var name = item.OriginalName;
-            if (!string.IsNullOrWhiteSpace(name))
+            var nameNoExt = item.OriginalName;
+            if (!string.IsNullOrWhiteSpace(nameNoExt))
             {
-                mappingFiles.Add(name);
+                mappingFilesNoExtSet.Add(nameNoExt);
             }
         }
 
-        if (!folderFiles.SetEquals(mappingFiles))
+        if (!folderFilesNoExtSet.SetEquals(mappingFilesNoExtSet))
         {
             MessageBox.Show(this,
                 "Original file names do not match the mapping file. Mapping was not performed.",
@@ -1064,6 +1099,9 @@ public partial class MainWindow : Window
                 MessageBoxImage.Warning);
             return false;
         }
+
+        var originalFilesDict = BuildFrozenNameToExt(originalFilesPaths);
+
 
         var bookName = Path.GetFileName(_originalFolderPath) ?? "undefined";
         var issueReport = new StringBuilder();
@@ -1098,11 +1136,19 @@ public partial class MainWindow : Window
                         continue;
                     }
 
-                    var sourcePath = Path.Combine(originalImagesFolderPath, item.OriginalName);
-                    if (!File.Exists(sourcePath))
-                    {
-                        continue;
-                    }
+                    //var sourcePath = Path.Combine(originalImagesFolderPath, item.OriginalName);
+                    //if (!File.Exists(sourcePath))
+                    //{
+                    //    continue;
+                    //}
+                    
+                    var originalFileNameNoExt = item.OriginalName;
+
+                    var sourceExt = originalFilesDict.TryGetValue(item.OriginalName, out var ext)
+                        ? ext
+                        : Path.GetExtension(item.OriginalName);
+                    var originalFileNameWithExt = string.Concat(originalFileNameNoExt, sourceExt);
+                    var sourcePath = Path.Combine(originalImagesFolderPath, originalFileNameWithExt);
 
                     if (!Enum.TryParse(item.ReviewStatus, true, out ImageFileItem.ReviewStatusType status))
                     {
@@ -1124,9 +1170,8 @@ public partial class MainWindow : Window
                     switch (status)
                     {
                         case ImageFileItem.ReviewStatusType.Pending:
-                            var originalBase = GetFileNameWithoutExtension(item.NewName.AsSpan());
-                            // TO-DO: add extension to NR file
-                            var notReviewedFileName = string.Concat("_nr_", originalBase);
+                            var originalBase = item.NewName.AsSpan();
+                            var notReviewedFileName = string.Concat("_nr_", originalBase, sourceExt);
                             _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
                             issueReport.Append(bookName);
                             issueReport.Append('\t');
@@ -1136,7 +1181,8 @@ public partial class MainWindow : Window
                             break;
 
                         case ImageFileItem.ReviewStatusType.Approved:
-                            _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => item.NewName);
+                            var approvedFileName = string.Concat(item.NewName, sourceExt);
+                            _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => approvedFileName);
                             approvedCount++;
                             break;
 
@@ -1148,8 +1194,9 @@ public partial class MainWindow : Window
                                 ImageFileItem.RejectReasonType.Rescan => "_rs",
                                 _ => "_rejected",
                             };
-                            _fileProcessor.SaveFile(sourcePath, p => p, rejectedFolder, _ => item.NewName);
-                            var suffixed = _fileProcessor.BuildSuffixedFileName(item.NewName, suffix);
+                            var rejectedFileName = string.Concat(item.NewName, sourceExt);
+                            _fileProcessor.SaveFile(sourcePath, p => p, rejectedFolder, _ => rejectedFileName);
+                            var suffixed = _fileProcessor.BuildSuffixedFileName(rejectedFileName, suffix);
                             _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => suffixed);
                             var issueText = rejectReason == ImageFileItem.RejectReasonType.None
                                 ? "Rejected"
