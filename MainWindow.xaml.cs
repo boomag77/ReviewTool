@@ -20,6 +20,17 @@ namespace ReviewTool;
 
 public partial class MainWindow : Window
 {
+    private const bool TraceInputFlow = false;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void TraceInput(string message)
+    {
+        if (TraceInputFlow)
+        {
+            Debug.WriteLine(message);
+        }
+    }
+
     private struct ReviewStat
     {
         public string[] NotReviewedPages;
@@ -57,6 +68,8 @@ public partial class MainWindow : Window
     private double _magnifierSize = 240.0;
     private int? _lastSuggestedNumber;
     private readonly Dictionary<ImageFileItem, string> _suggestedNames = new();
+    private int _lastHandledIndex = -1;
+    private bool _transitionInProgress;
 
     private string _originalFolderPath = string.Empty;
 
@@ -141,7 +154,7 @@ public partial class MainWindow : Window
                 BuildFoldersIndexesAsync(processedFolder, isOriginal: false)
             );
         _currentImageIndex = 0;
-        await UpdatePreviewImagesAsync();
+        await AdvanceToIndexAsync(_currentImageIndex);
         FocusWindowForInputDeferred();
     }
 
@@ -216,7 +229,7 @@ public partial class MainWindow : Window
         LoadOriginalFilesList(originalFolder);
         ResetProcessedIndex();
         _currentImageIndex = 0;
-        await UpdatePreviewImagesAsync();
+        await AdvanceToIndexAsync(_currentImageIndex);
         FocusWindowForInputDeferred();
     }
 
@@ -430,6 +443,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            TraceInput($"NextImageCommand_Executed idx={_currentImageIndex} focus={Keyboard.FocusedElement?.GetType().Name}");
             await HandleOkAsync();
         }
         catch (Exception ex)
@@ -443,6 +457,10 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (_transitionInProgress)
+            {
+                return;
+            }
             await NavigateImages(-1);
         }
         catch (Exception ex)
@@ -462,10 +480,17 @@ public partial class MainWindow : Window
         Rescan_Click(sender, new RoutedEventArgs());
     }
 
-    private void OriginalFiles_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void OriginalFiles_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        TraceInput($"SelectionChanged start idx={_currentImageIndex} focus={Keyboard.FocusedElement?.GetType().Name}");
+        if (_transitionInProgress)
+        {
+            TraceInput("SelectionChanged suppressed (transition)");
+            return;
+        }
         if (_suppressFileSelection)
         {
+            TraceInput("SelectionChanged suppressed");
             return;
         }
 
@@ -489,17 +514,18 @@ public partial class MainWindow : Window
             CaptureLastSuggestedNumber(removedItem);
         }
 
-        _currentImageIndex = idx;
-        _ = UpdatePreviewImagesAsync();
-        Dispatcher.BeginInvoke(
-            DispatcherPriority.Input,
-            new Action(FocusCurrentFileNameField));
+        await AdvanceToIndexAsync(idx);
+        TraceInput($"SelectionChanged end idx={_currentImageIndex}");
     }
 
     private async void OkReview_Click(object sender, RoutedEventArgs e)
     {
         try
         {
+            if (_transitionInProgress)
+            {
+                return;
+            }
             if (_isInitialReview)
             {
                 SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Approved,
@@ -521,6 +547,10 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (_transitionInProgress)
+            {
+                return;
+            }
             if (_isInitialReview)
             {
                 //await SaveInitialReviewRejectedAsync("_bo");
@@ -544,6 +574,10 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (_transitionInProgress)
+            {
+                return;
+            }
             if (_isInitialReview)
             {
                 //await SaveInitialReviewRejectedAsync("_rs");
@@ -674,6 +708,7 @@ public partial class MainWindow : Window
         {
             return;
         }
+        TraceInput($"FileNameTextBox_PreviewKeyDown Enter idx={_currentImageIndex} focus={Keyboard.FocusedElement?.GetType().Name}");
 
         e.Handled = true;
 
@@ -681,6 +716,15 @@ public partial class MainWindow : Window
         {
             return;
         }
+        if (_transitionInProgress)
+        {
+            return;
+        }
+        if (_currentImageIndex == _lastHandledIndex)
+        {
+            return;
+        }
+        _lastHandledIndex = _currentImageIndex;
 
         SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Approved,
                                        ImageFileItem.RejectReasonType.None,
@@ -1517,6 +1561,11 @@ public partial class MainWindow : Window
 
     private async Task NavigateImages(int delta)
     {
+        TraceInput($"NavigateImages start idx={_currentImageIndex} delta={delta}");
+        if (_transitionInProgress)
+        {
+            return;
+        }
         var maxIndex = Math.Max(_originalFolderIndex.LastIndex, _processedFolderIndex.LastIndex);
         if (maxIndex < 0)
         {
@@ -1530,38 +1579,80 @@ public partial class MainWindow : Window
         }
 
         CaptureLastSuggestedNumber();
-        _currentImageIndex = nextIndex;
-        await UpdatePreviewImagesAsync();
+        await AdvanceToIndexAsync(nextIndex);
+        TraceInput($"NavigateImages end idx={_currentImageIndex}");
+    }
+
+    private async Task AdvanceToIndexAsync(int nextIndex)
+    {
+        TraceInput($"AdvanceToIndexAsync start idx={_currentImageIndex} -> {nextIndex}");
+        if (_transitionInProgress)
+        {
+            return;
+        }
+
+        // Transition lock: while we are applying status, changing index, refreshing preview,
+        // updating selection, and ensuring a suggested name exists, ignore further user input.
+        _transitionInProgress = true;
+        _suppressFileSelection = true;
+        try
+        {
+            _currentImageIndex = nextIndex;
+            await UpdatePreviewImagesAsync();
+            UpdateSelectedOriginalFile();
+            EnsureSuggestedNameForSelectedItem();
+            FocusCurrentFileNameField();
+        }
+        finally
+        {
+            _suppressFileSelection = false;
+            _lastHandledIndex = -1;
+            _transitionInProgress = false;
+        }
+        TraceInput($"AdvanceToIndexAsync end idx={_currentImageIndex}");
     }
 
     private async Task HandleOkAsync()
     {
+        TraceInput($"HandleOkAsync start idx={_currentImageIndex}");
+        if (_transitionInProgress)
+        {
+            return;
+        }
         if (_isInitialReview)
         {
+            if (_currentImageIndex == _lastHandledIndex)
+            {
+                return;
+            }
+            _lastHandledIndex = _currentImageIndex;
+
             SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Approved,
                                            ImageFileItem.RejectReasonType.None,
                                            null);
         }
 
         await NavigateImages(1);
+        TraceInput($"HandleOkAsync end idx={_currentImageIndex}");
     }
 
     private async Task UpdatePreviewImagesAsync()
     {
+        TraceInput($"UpdatePreviewImagesAsync start idx={_currentImageIndex}");
         var currIdx = _currentImageIndex;
         var task1 = Task.Run(() => LoadBitmapForIndex(_originalFolderIndex, currIdx));
         var task2 = Task.Run(() => LoadBitmapForIndex(_processedFolderIndex, currIdx));
         var bitmaps = await Task.WhenAll(task1, task2);
         if (currIdx != _currentImageIndex)
         {
+            TraceInput($"UpdatePreviewImagesAsync stale idx={currIdx} current={_currentImageIndex}");
             return;
         }
         _viewModel.OriginalImagePreview = bitmaps[0];
         _viewModel.ReviewingImagePreview = bitmaps[1];
 
         UpdatePreviewLabels();
-        UpdateSelectedOriginalFile();
-        FocusCurrentFileNameField();
+        TraceInput($"UpdatePreviewImagesAsync end idx={_currentImageIndex}");
     }
 
     private BitmapSource? LoadBitmapForIndex(CurrentFolderIndex index, int imageIndex)
@@ -1694,6 +1785,31 @@ public partial class MainWindow : Window
                 textBox.Focus();
                 textBox.SelectAll();
             }));
+    }
+
+    // Apply suggestion to the view-model immediately (without relying on TextBox creation/focus timing).
+    // This prevents "skips" when the user triggers the next action before the UI has a chance to focus/render.
+    private void EnsureSuggestedNameForSelectedItem()
+    {
+        if (!_isInitialReview)
+        {
+            return;
+        }
+
+        var item = _viewModel.SelectedOriginalFile;
+        if (item is null)
+        {
+            return;
+        }
+
+        if (!ShouldSuggestName(item))
+        {
+            return;
+        }
+
+        var suggestion = GetNextSuggestedName();
+        item.NewFileName = suggestion;
+        _suggestedNames[item] = suggestion;
     }
 
     private void CaptureLastSuggestedNumber()
