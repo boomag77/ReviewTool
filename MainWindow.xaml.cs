@@ -1125,6 +1125,7 @@ public partial class MainWindow : Window
                     {
                         case ImageFileItem.ReviewStatusType.Pending:
                             var originalBase = GetFileNameWithoutExtension(item.NewName.AsSpan());
+                            // TO-DO: add extension to NR file
                             var notReviewedFileName = string.Concat("_nr_", originalBase);
                             _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
                             issueReport.Append(bookName);
@@ -1900,7 +1901,7 @@ public partial class MainWindow : Window
             {
                 var files = Directory.EnumerateFiles(folderPath)
                                  .Where(_owner._fileProcessor.IsSupportedImage)
-                                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+                                 .OrderBy(f => Path.GetFileName(f), ExplorerComparer.Instance);
                 var tmpFolderIndex = new Dictionary<int, string>();
                 var tmpFolderIndexByPath = new Dictionary<string, int>();
                 int i = 0;
@@ -1924,6 +1925,23 @@ public partial class MainWindow : Window
             }, token);
         }
     }
+
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+    private static extern int StrCmpLogicalW(string x, string y);
+
+    private sealed class ExplorerComparer : IComparer<string>
+    {
+        public static readonly ExplorerComparer Instance = new();
+
+        public int Compare(string? x, string? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+            return StrCmpLogicalW(x, y);
+        }
+    }
+
 
     private sealed class MagnifierAdorner : Adorner
     {
