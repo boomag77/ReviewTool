@@ -618,11 +618,23 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var mappingInfo = ParseMappingInfoFrom(dialog.FileName);
+            var (bookName, mappingInfo) = ParseMappingInfoFrom(dialog.FileName);
             if (mappingInfo.Count == 0)
             {
                 MessageBox.Show(this, "Mapping file is empty or invalid.", "Mapping", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
+            }
+            if (bookName != Path.GetFileName(Path.TrimEndingDirectorySeparator(originalFolder)))
+            {
+                var result = MessageBox.Show(this,
+                    $"The mapping file was created for \"{bookName}\", but the selected folder is \"{Path.GetFileName(Path.TrimEndingDirectorySeparator(originalFolder))}\". Do you want to proceed?",
+                    "Mapping",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                if (result != MessageBoxResult.Yes)
+                {
+                    return;
+                }
             }
 
             var initialReviewFolderPath = _fileProcessor.GetInitialReviewFolderPath(originalFolder);
@@ -987,6 +999,7 @@ public partial class MainWindow : Window
         statsBuilder.AppendLine($"Missing pages\t{folderStat.MissingPages?.Length ?? 0}\t{Sanitize(JoinItems(folderStat.MissingPages ?? Array.Empty<int>()))}");
 
         var mappingBuilder = new StringBuilder();
+        mappingBuilder.AppendLine(Path.GetFileName(Path.TrimEndingDirectorySeparator(_originalFolderPath) ?? "undefined"));
         mappingBuilder.AppendLine("OriginalName\tNewName\tReviewStatus\tRejectReason\tReviewDate");
         if (mappingInfo != null)
         {
@@ -1045,17 +1058,25 @@ public partial class MainWindow : Window
         return true;
     }
 
-    private static List<ImageFileMappingInfo> ParseMappingInfoFrom(string mappingInfoFilePath)
+    private static (string, List<ImageFileMappingInfo>) ParseMappingInfoFrom(string mappingInfoFilePath)
     {
         var result = new List<ImageFileMappingInfo>();
         if (string.IsNullOrWhiteSpace(mappingInfoFilePath) || !File.Exists(mappingInfoFilePath))
         {
-            return result;
+            return (string.Empty, result);
         }
 
+        bool isBookNameLine = true;
         bool isFirstLine = true;
+        var bookName = string.Empty;
         foreach (var line in File.ReadLines(mappingInfoFilePath))
         {
+            if (isBookNameLine)
+            {
+                bookName = line.Trim();
+                isBookNameLine = false;
+                continue;
+            }
             if (isFirstLine)
             {
                 isFirstLine = false;
@@ -1083,7 +1104,7 @@ public partial class MainWindow : Window
             });
         }
 
-        return result;
+        return (bookName, result);
     }
 
     private async Task<bool> TryPerformMappingToAsync(string originalImagesFolderPath, IReadOnlyList<ImageFileMappingInfo> mappingInfo)
