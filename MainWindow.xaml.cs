@@ -1096,21 +1096,12 @@ public partial class MainWindow : Window
             return false;
         }
 
-        int totalFilesToMap = mappingInfo.Count;
 
-        
 
-        static FrozenDictionary<string, string> BuildFrozenNameToExt(IReadOnlyList<string> paths)
+        static FrozenDictionary<string, ImageFileMappingInfo> BuildFrozenNameToExt(IReadOnlyList<ImageFileMappingInfo> mappingItems)
         {
-
-            return paths
-                .Select(p => new
-                {
-                    Name = Path.GetFileNameWithoutExtension(p),
-                    Ext = Path.GetExtension(p)
-                })
-                .Where(x => !string.IsNullOrEmpty(x.Name))      // на всякий
-                .ToFrozenDictionary(x => x.Name, x => x.Ext, StringComparer.OrdinalIgnoreCase);
+            return mappingItems
+                .ToFrozenDictionary(x => x.OriginalName, x => x, StringComparer.OrdinalIgnoreCase);
         }
 
         var folderFilesNoExtSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1136,15 +1127,17 @@ public partial class MainWindow : Window
 
         if (!folderFilesNoExtSet.SetEquals(mappingFilesNoExtSet))
         {
-            MessageBox.Show(this,
-                "Original file names do not match the mapping file. Mapping was not performed.",
+            var res = MessageBox.Show(this,
+                "Original file names do not match the mapping file.\n\nDo you want to proceed anyway?",
                 "Mapping mismatch",
-                MessageBoxButton.OK,
+                MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
-            return false;
+            if (res != MessageBoxResult.Yes)
+                return false;
         }
+        int totalFilesToMap = originalFilesPaths.Count;
 
-        var originalFilesDict = BuildFrozenNameToExt(originalFilesPaths);
+        var mappingItemsDict = BuildFrozenNameToExt(mappingInfo);
 
 
         var bookName = Path.GetFileName(_originalFolderPath) ?? "undefined";
@@ -1163,36 +1156,22 @@ public partial class MainWindow : Window
             await Task.Run(() =>
             {
                 Directory.CreateDirectory(_initialReviewFolder);
-                var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
+                //var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
                 var pagesWithNumbers = new HashSet<int>();
                 var maxPageNumber = 0;
 
-                foreach (var item in mappingInfo)
+                foreach (var origFilePath in originalFilesPaths)
                 {
-                    if (mappingCts.IsCancellationRequested)
-                    {
-                        return;
-                    }
+                    if (mappingCts.IsCancellationRequested) { return; }
 
-                    if (string.IsNullOrWhiteSpace(item.OriginalName) ||
-                        string.IsNullOrWhiteSpace(item.NewName))
+                    var origFileNoExt = Path.GetFileNameWithoutExtension(origFilePath);
+                    if (!mappingItemsDict.TryGetValue(origFileNoExt, out var item))
                     {
+                        var notMappedFileName = string.Concat("_not_mapped_", Path.GetFileName(origFilePath));
+                        _fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => notMappedFileName);
                         continue;
                     }
 
-                    //var sourcePath = Path.Combine(originalImagesFolderPath, item.OriginalName);
-                    //if (!File.Exists(sourcePath))
-                    //{
-                    //    continue;
-                    //}
-                    
-                    var originalFileNameNoExt = item.OriginalName;
-
-                    var sourceExt = originalFilesDict.TryGetValue(item.OriginalName, out var ext)
-                        ? ext
-                        : Path.GetExtension(item.OriginalName);
-                    var originalFileNameWithExt = string.Concat(originalFileNameNoExt, sourceExt);
-                    var sourcePath = Path.Combine(originalImagesFolderPath, originalFileNameWithExt);
 
                     if (!Enum.TryParse(item.ReviewStatus, true, out ImageFileItem.ReviewStatusType status))
                     {
@@ -1211,12 +1190,13 @@ public partial class MainWindow : Window
                         maxPageNumber = Math.Max(maxPageNumber, pageNumber);
                     }
 
+                    var sourceExt = Path.GetExtension(origFilePath);
                     switch (status)
                     {
                         case ImageFileItem.ReviewStatusType.Pending:
                             var originalBase = item.NewName.AsSpan();
-                            var notReviewedFileName = string.Concat("_nr_", originalBase, sourceExt);
-                            _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
+                            var notReviewedFileName = string.Concat("_not_reviewed_", originalBase, sourceExt);
+                            _fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
                             issueReport.Append(bookName);
                             issueReport.Append('\t');
                             issueReport.Append(item.NewName);
@@ -1226,7 +1206,7 @@ public partial class MainWindow : Window
 
                         case ImageFileItem.ReviewStatusType.Approved:
                             var approvedFileName = string.Concat(item.NewName, sourceExt);
-                            _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => approvedFileName);
+                            _fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => approvedFileName);
                             approvedCount++;
                             break;
 
@@ -1239,9 +1219,9 @@ public partial class MainWindow : Window
                                 _ => "_rejected",
                             };
                             var rejectedFileName = string.Concat(item.NewName, sourceExt);
-                            _fileProcessor.SaveFile(sourcePath, p => p, rejectedFolder, _ => rejectedFileName);
+                            //_fileProcessor.SaveFile(origFilePath, p => p, rejectedFolder, _ => rejectedFileName);
                             var suffixed = _fileProcessor.BuildSuffixedFileName(rejectedFileName, suffix);
-                            _fileProcessor.SaveFile(sourcePath, p => p, _initialReviewFolder, _ => suffixed);
+                            _fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => suffixed);
                             var issueText = rejectReason == ImageFileItem.RejectReasonType.None
                                 ? "Rejected"
                                 : rejectReason.ToString();
@@ -1274,10 +1254,10 @@ public partial class MainWindow : Window
                         missingCount++;
                     }
                 }
-                if (rejectedCount == 0)
-                {
-                    Directory.Delete(rejectedFolder, true);
-                }
+                //if (rejectedCount == 0)
+                //{
+                //    Directory.Delete(rejectedFolder, true);
+                //}
             }, mappingCts.Token);
         }
         catch (OperationCanceledException)
@@ -1467,97 +1447,6 @@ public partial class MainWindow : Window
     }
 
 
-    private async Task<ReviewStat> PersistInitialReviewResultsAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_initialReviewFolder))
-        {
-            return new ReviewStat();
-        }
-        HashSet<int> pagesWithPageNumbers = new();
-        HashSet<string> notReviewedPages = new();
-        HashSet<string> approvedPages = new();
-        HashSet<string> badOriginalPages = new();
-        HashSet<string> rescanPages = new();
-        HashSet<int> missingPages = new();
-
-        var items = _viewModel.OriginalFiles.ToList();
-        var itemsCount = items.Count;
-        var maxIndex = itemsCount;
-        
-        var maxDigitsLen = maxIndex.ToString().Length;
-        var fileNameBuilder = new FileNameBuilder(maxDigitsLen);
-        int maxPageNumber = 0;
-        await Task.Run(() =>
-        {
-            var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
-
-            for (int i = 0; i < itemsCount; i++)
-            {
-
-                var newFileName = fileNameBuilder.BuildReviewedFileName(items[i].FilePath, items[i].NewFileName, out bool hasPageNumber);
-                if (TryGetNumericPrefix(newFileName.AsSpan(), out var pageNumber, out _)
-                    && pageNumber > 0)
-                {
-                    pagesWithPageNumbers.Add(pageNumber);
-                    maxPageNumber = Math.Max(maxPageNumber, pageNumber);
-                }
-                switch (items[i].ReviewStatus)
-                {
-                    case ImageFileItem.ReviewStatusType.Pending:
-
-                        ReadOnlySpan<char> originalFileName = Path.GetFileNameWithoutExtension(items[i].FilePath.AsSpan());
-                        var notReviewedFileName = string.Concat("_nr_", originalFileName);
-                        notReviewedPages.Add(originalFileName.ToString());
-                        _fileProcessor.SaveFile(items[i].FilePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
-                        continue;
-
-                    case ImageFileItem.ReviewStatusType.Approved:
-                        approvedPages.Add(newFileName);
-                        _fileProcessor.SaveFile(items[i].FilePath, p => p, _initialReviewFolder, _ => newFileName);
-                        continue;
-
-                    case ImageFileItem.ReviewStatusType.Rejected:
-                        var suffix = items[i].RejectReason switch
-                        {
-                            ImageFileItem.RejectReasonType.BadOriginal => "_bo",
-                            ImageFileItem.RejectReasonType.Rescan => "_rs",
-                            _ => "_rejected",
-                        };
-                        if (items[i].RejectReason == ImageFileItem.RejectReasonType.BadOriginal && hasPageNumber)
-                        {
-                            badOriginalPages.Add(newFileName);
-                        }
-                        else if (items[i].RejectReason == ImageFileItem.RejectReasonType.Rescan && hasPageNumber)
-                        {
-                            rescanPages.Add(newFileName);
-                        }
-
-                        //var rejectedBaseName = BuildReviewedFileName(item.FilePath, item.NewFileName);
-                        _fileProcessor.SaveFile(items[i].FilePath, p => p, rejectedFolder, _ => newFileName);
-                        var suffixed = _fileProcessor.BuildSuffixedFileName(newFileName, suffix);
-                        _fileProcessor.SaveFile(items[i].FilePath, p => p, _initialReviewFolder, _ => suffixed);
-                        continue;
-                }
-            }
-        });
-        for (int i = 1; i <= maxPageNumber; i++)
-        {
-            if (!pagesWithPageNumbers.Contains(i))
-            {
-                missingPages.Add(i);
-            }
-        }
-        return new ReviewStat
-        {
-            NotReviewedPages = notReviewedPages.ToArray(),
-            ApprovedPages = approvedPages.ToArray(),
-            BadOriginalPages = badOriginalPages.ToArray(),
-            RescanPages = rescanPages.ToArray(),
-            MissingPages = missingPages.ToArray(),
-            MaxPageNumber = maxPageNumber,
-            
-        };
-    }
 
     private async Task NavigateImages(int delta)
     {
@@ -1602,6 +1491,7 @@ public partial class MainWindow : Window
             UpdateSelectedOriginalFile();
             EnsureSuggestedNameForSelectedItem();
             FocusCurrentFileNameField();
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(UpdateSuggestedHeaderLayout));
         }
         finally
         {
@@ -1610,6 +1500,60 @@ public partial class MainWindow : Window
             _transitionInProgress = false;
         }
         TraceInput($"AdvanceToIndexAsync end idx={_currentImageIndex}");
+    }
+
+    private void OriginalViewbox_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateSuggestedHeaderLayout();
+    }
+
+    private void UpdateSuggestedHeaderLayout()
+    {
+        if (!_isInitialReview)
+        {
+            return;
+        }
+
+        if (SuggestedHeaderCanvas is null || SuggestedHeaderLeft is null || SuggestedHeaderRight is null || OriginalViewbox is null)
+        {
+            return;
+        }
+
+        if (OriginalImage?.Source is not BitmapSource bitmap)
+        {
+            return;
+        }
+
+        var viewW = OriginalViewbox.ActualWidth;
+        var viewH = OriginalViewbox.ActualHeight;
+        if (viewW <= 0 || viewH <= 0)
+        {
+            return;
+        }
+
+        var imgW = (double)bitmap.PixelWidth;
+        var imgH = (double)bitmap.PixelHeight;
+        if (imgW <= 0 || imgH <= 0)
+        {
+            return;
+        }
+
+        // Stretch=Uniform centers the image with letterboxing. Compute the displayed rect.
+        var scale = Math.Min(viewW / imgW, viewH / imgH);
+        var dispW = imgW * scale;
+        var left = (viewW - dispW) / 2.0;
+        var headerW = SuggestedHeaderCanvas.ActualWidth;
+        var offsetX = (headerW - viewW) / 2.0;
+
+        SuggestedHeaderLeft.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        SuggestedHeaderRight.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var rightW = SuggestedHeaderRight.DesiredSize.Width;
+
+        Canvas.SetLeft(SuggestedHeaderLeft, offsetX + left);
+        Canvas.SetTop(SuggestedHeaderLeft, 0);
+
+        Canvas.SetLeft(SuggestedHeaderRight, offsetX + left + dispW - rightW);
+        Canvas.SetTop(SuggestedHeaderRight, 0);
     }
 
     private async Task HandleOkAsync()
