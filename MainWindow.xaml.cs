@@ -783,6 +783,40 @@ public partial class MainWindow : Window
         TryApplyAutoFillFromItem(seedItem, seedItem.NewFileName, force: true);
     }
 
+    private async void ResetReviewButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isInitialReview || _transitionInProgress)
+        {
+            return;
+        }
+
+        _viewModel.IsAutoFillEnabled = false;
+        _lastSuggestedNumber = null;
+        _lastHandledIndex = -1;
+        _suggestedNames.Clear();
+        _autoFillSeeds.Clear();
+        _capturedMappingInfo.Clear();
+
+        _autoFillInProgress = true;
+        try
+        {
+            foreach (var item in _viewModel.OriginalFiles)
+            {
+                item.NewFileName = string.Empty;
+                item.RejectReason = ImageFileItem.RejectReasonType.None;
+                item.ReviewStatus = ImageFileItem.ReviewStatusType.Pending;
+            }
+        }
+        finally
+        {
+            _autoFillInProgress = false;
+        }
+
+        _currentImageIndex = 0;
+        await AdvanceToIndexAsync(_currentImageIndex);
+        FocusWindowForInputDeferred();
+    }
+
     private void FileNameTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_autoFillInProgress || !_isInitialReview || !_viewModel.IsAutoFillEnabled)
