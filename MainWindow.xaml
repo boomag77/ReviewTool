@@ -210,18 +210,47 @@
                 </ColumnDefinition>
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Margin="6,0,0,8">
-                <TextBlock Text="{Binding OriginalImageLabel}" FontSize="14" FontWeight="SemiBold"
+            <Grid Grid.Row="0" Grid.Column="0" Margin="6,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Text="{Binding OriginalImageLabel}"
+                           FontSize="14"
+                           FontWeight="SemiBold"
                            Foreground="#3A3A3A" />
-            </StackPanel>
-            <Canvas x:Name="SuggestedHeaderCanvas" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8">
-                <TextBlock x:Name="SuggestedHeaderLeft"
-                           Style="{StaticResource SuggestedNumberTextStyle}"
-                           Text="{Binding SelectedOriginalFile.NewFileName}" />
-                <TextBlock x:Name="SuggestedHeaderRight"
-                           Style="{StaticResource SuggestedNumberTextStyle}"
-                           Text="{Binding SelectedOriginalFile.NewFileName}" />
-            </Canvas>
+                <CheckBox x:Name="AutoFillCheckBox"
+                          Grid.Column="2"
+                          Content="Auto fill"
+                          IsChecked="{Binding IsAutoFillEnabled, Mode=TwoWay}"
+                          VerticalAlignment="Center"
+                          Foreground="#3A3A3A"
+                          Margin="0,0,10,0"
+                          Checked="AutoFillCheckBox_Checked">
+                    <CheckBox.Style>
+                        <Style TargetType="CheckBox">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsInitialReview}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </CheckBox.Style>
+                </CheckBox>
+            </Grid>
+            <Grid Grid.Row="0" Grid.Column="1" Margin="0,0,0,8">
+                <Canvas x:Name="SuggestedHeaderCanvas">
+                    <TextBlock x:Name="SuggestedHeaderLeft"
+                               Style="{StaticResource SuggestedNumberTextStyle}"
+                               Text="{Binding SelectedOriginalFile.NewFileName}" />
+                    <TextBlock x:Name="SuggestedHeaderRight"
+                               Style="{StaticResource SuggestedNumberTextStyle}"
+                               Text="{Binding SelectedOriginalFile.NewFileName}" />
+                </Canvas>
+            </Grid>
             <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding ReviewingImageLabel}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,8">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">
@@ -282,15 +311,16 @@
                                 <TextBlock Grid.Column="1" Text="{Binding FileName}" VerticalAlignment="Center"
                                            Foreground="LightGray"
                                            Margin="0,0,12,0" />
-                                <TextBox Grid.Column="2" Text="{Binding NewFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         Margin="12,0,0,0"
-                                         VerticalAlignment="Center"
-                                         HorizontalAlignment="Stretch"
-                                         PreviewKeyDown="FileNameTextBox_PreviewKeyDown"
-                                         GotFocus="FileNameTextBox_GotFocus"
-                                         Foreground="LightGray"
-                                         Background="#2F3136"
-                                         BorderBrush="{StaticResource PipelineCardBorderBrush}"
+                                 <TextBox Grid.Column="2" Text="{Binding NewFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          Margin="12,0,0,0"
+                                          VerticalAlignment="Center"
+                                          HorizontalAlignment="Stretch"
+                                          TextChanged="FileNameTextBox_TextChanged"
+                                          PreviewKeyDown="FileNameTextBox_PreviewKeyDown"
+                                          GotFocus="FileNameTextBox_GotFocus"
+                                          Foreground="LightGray"
+                                          Background="#2F3136"
+                                          BorderBrush="{StaticResource PipelineCardBorderBrush}"
                                          BorderThickness="1"
                                          Padding="4,2" />
                             </Grid>

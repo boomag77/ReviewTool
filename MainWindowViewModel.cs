@@ -18,6 +18,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _initialReviewButtonText = "Start Initial Review";
     private string _finalReviewButtonText = "Start Final Review";
     private string _performMappingButtonText = "Perform mapping";
+    private bool _isAutoFillEnabled;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -49,6 +50,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _isInitialReview;
         set => SetField(ref _isInitialReview, value);
+    }
+
+    public bool IsAutoFillEnabled
+    {
+        get => _isAutoFillEnabled;
+        set => SetField(ref _isAutoFillEnabled, value);
     }
 
     public ObservableCollection<ImageFileItem> OriginalFiles

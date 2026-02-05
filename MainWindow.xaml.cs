@@ -68,6 +68,8 @@ public partial class MainWindow : Window
     private double _magnifierSize = 240.0;
     private int? _lastSuggestedNumber;
     private readonly Dictionary<ImageFileItem, string> _suggestedNames = new();
+    private readonly Dictionary<ImageFileItem, (int number, int width)> _autoFillSeeds = new();
+    private bool _autoFillInProgress;
     private int _lastHandledIndex = -1;
     private bool _transitionInProgress;
 
@@ -216,6 +218,7 @@ public partial class MainWindow : Window
         _viewModel.FinalReviewButtonText = "Start Final Review...";
         //_fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
         _suggestedNames.Clear();
+        _viewModel.IsAutoFillEnabled = false;
 
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
         ReadOnlySpan<char> span = _originalFolderIndex.LastIndex.ToString().AsSpan();
@@ -760,6 +763,130 @@ public partial class MainWindow : Window
         {
             _viewModel.SelectedOriginalFile = item;
         }
+    }
+
+    private void AutoFillCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_isInitialReview || !_viewModel.IsAutoFillEnabled)
+        {
+            return;
+        }
+
+        EnsureSuggestedNameForSelectedItem();
+
+        var seedItem = _viewModel.SelectedOriginalFile;
+        if (seedItem is null)
+        {
+            return;
+        }
+
+        TryApplyAutoFillFromItem(seedItem, seedItem.NewFileName, force: true);
+    }
+
+    private void FileNameTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_autoFillInProgress || !_isInitialReview || !_viewModel.IsAutoFillEnabled)
+        {
+            return;
+        }
+
+        if (sender is not TextBox textBox || textBox.DataContext is not ImageFileItem item)
+        {
+            return;
+        }
+
+        TryApplyAutoFillFromItem(item, textBox.Text);
+    }
+
+    private void TryApplyAutoFillFromItem(ImageFileItem seedItem, string seedText, bool force = false)
+    {
+        if (!TryGetNumericPrefixInfo(seedText, out var number, out var width))
+        {
+            return;
+        }
+
+        if (!force
+            && _autoFillSeeds.TryGetValue(seedItem, out var existing)
+            && existing.number == number
+            && existing.width == width)
+        {
+            return;
+        }
+
+        _autoFillSeeds[seedItem] = (number, width);
+        _lastSuggestedNumber = number;
+
+        var items = _viewModel.OriginalFiles;
+        var seedIndex = items.IndexOf(seedItem);
+        if (seedIndex < 0)
+        {
+            return;
+        }
+
+        ApplyAutoFill(items, seedIndex, number + 1, width);
+    }
+
+    private void ApplyAutoFill(IList<ImageFileItem> items, int seedIndex, int nextNumber, int width)
+    {
+        if (seedIndex < 0 || seedIndex >= items.Count - 1)
+        {
+            return;
+        }
+
+        _autoFillInProgress = true;
+        try
+        {
+            var number = nextNumber;
+            for (var i = seedIndex + 1; i < items.Count; i++)
+            {
+                var item = items[i];
+                var suggestion = number.ToString(GetAutoFillFormat(width));
+
+                // When Auto fill is enabled, always overwrite subsequent items.
+                // Status (AC/BO/RS) is independent from numbering, and users may go back to re-seed numbering.
+                item.NewFileName = suggestion;
+                _suggestedNames[item] = suggestion;
+                _autoFillSeeds[item] = (number, width);
+
+                number++;
+            }
+        }
+        finally
+        {
+            _autoFillInProgress = false;
+        }
+    }
+
+    private string GetAutoFillFormat(int seedWidth)
+    {
+        var minWidth = TotalImagesToReview < 1000 ? 3 : 4;
+        var width = Math.Max(minWidth, seedWidth);
+        return "D" + width.ToString();
+    }
+
+    private static bool TryGetNumericPrefixInfo(string name, out int number, out int width)
+    {
+        number = 0;
+        width = 0;
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        var span = name.AsSpan().Trim();
+        var i = 0;
+        while (i < span.Length && char.IsDigit(span[i]))
+        {
+            i++;
+        }
+
+        if (i == 0)
+        {
+            return false;
+        }
+
+        width = i;
+        return int.TryParse(span[..i], out number);
     }
 
     private void FocusWindowForInput()
