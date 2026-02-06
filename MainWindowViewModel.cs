@@ -19,6 +19,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _finalReviewButtonText = "Start Final Review";
     private string _performMappingButtonText = "Perform mapping";
     private bool _isAutoFillEnabled;
+    private string _targetFolderDisplayPath = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -91,6 +92,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _suggestedNumberLabel;
         set => SetField(ref _suggestedNumberLabel, value);
+    }
+
+    public string TargetFolderDisplayPath
+    {
+        get => _targetFolderDisplayPath;
+        set => SetField(ref _targetFolderDisplayPath, value ?? string.Empty);
     }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

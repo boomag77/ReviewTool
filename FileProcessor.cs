@@ -33,34 +33,40 @@ public sealed class FileProcessor
         return string.IsNullOrWhiteSpace(parent) ? initialName : Path.Combine(parent, initialName);
     }
 
-    public string EnsureRejectedFolder(string initialFolder)
-    {
-        var rejectedFolder = Path.Combine(initialFolder, "Rejected");
-        Directory.CreateDirectory(rejectedFolder);
-        return rejectedFolder;
-    }
+    //public string EnsureRejectedFolder(string initialFolder)
+    //{
+    //    var rejectedFolder = Path.Combine(initialFolder, "Rejected");
+    //    Directory.CreateDirectory(rejectedFolder);
+    //    return rejectedFolder;
+    //}
 
-    public string EnsureSkippedFolder(string initialFolder)
-    {
-        var skippedFolder = Path.Combine(initialFolder, "Skipped");
-        Directory.CreateDirectory(skippedFolder);
-        return skippedFolder;
-    }
+    //public string EnsureSkippedFolder(string initialFolder)
+    //{
+    //    var skippedFolder = Path.Combine(initialFolder, "Skipped");
+    //    Directory.CreateDirectory(skippedFolder);
+    //    return skippedFolder;
+    //}
 
-    public void SaveFile<T>(T item, Func<T, string> sourcePathSelector, string destinationFolder, Func<T, string>? destinationNameSelector = null)
+    public void SaveFile(string sourcePath, string destinationFolder, string newFileName)
     {
-        var sourcePath = sourcePathSelector(item);
-        var fileName = destinationNameSelector is null ? Path.GetFileName(sourcePath) : destinationNameSelector(item);
-        var destinationPath = Path.Combine(destinationFolder, fileName);
-        Directory.CreateDirectory(destinationFolder);
+        var destinationPath = Path.Combine(destinationFolder, newFileName);
         File.Copy(sourcePath, destinationPath, true);
     }
 
-    public string BuildSuffixedFileName(string sourcePath, string suffix)
+    //public void SaveFile<T>(T item, Func<T, string> sourcePathSelector, string destinationFolder, Func<T, string>? destinationNameSelector = null)
+    //{
+    //    var sourcePath = sourcePathSelector(item);
+    //    var fileName = destinationNameSelector is null ? Path.GetFileName(sourcePath) : destinationNameSelector(item);
+    //    var destinationPath = Path.Combine(destinationFolder, fileName);
+    //    Directory.CreateDirectory(destinationFolder);
+    //    File.Copy(sourcePath, destinationPath, true);
+    //}
+
+    public string BuildSuffixedFileNameWithExtension(string sourcePath, string suffix, string extension)
     {
         var name = Path.GetFileNameWithoutExtension(sourcePath);
-        var ext = Path.GetExtension(sourcePath);
-        return string.Concat(name, suffix, ext);
+        extension = extension[0] == '.' ? extension : "." + extension;
+        return string.Concat(name, suffix, extension);
     }
 
     public async Task<int> GetMaxDigitsInImageFiles(string folderPath)

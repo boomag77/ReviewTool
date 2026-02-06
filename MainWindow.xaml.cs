@@ -182,8 +182,8 @@ public partial class MainWindow : Window
     {
         var result = MessageBox.Show(
             this,
-            "The review is in progress! Are you sure you want to exit without saving any results?",
-            "Cancel Review",
+            "The review is in progress!\n\nAre you sure you want to exit without saving any results?",
+            $"Cancel Review {_viewModel.TargetFolderDisplayPath}",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -210,6 +210,7 @@ public partial class MainWindow : Window
         }
 
         _originalFolderPath = originalFolder;
+        _viewModel.TargetFolderDisplayPath = BuildDisplayPath(originalFolder);
 
         var imageFilesDigitsNumber = _fileProcessor.GetMaxDigitsInImageFiles(originalFolder);
 
@@ -306,6 +307,7 @@ public partial class MainWindow : Window
         _isInitialReview = false;
         _initialReviewFolder = null;
         _viewModel.IsInitialReview = false;
+        _viewModel.TargetFolderDisplayPath = string.Empty;
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
@@ -320,10 +322,43 @@ public partial class MainWindow : Window
         _initialReviewFolder = null;
         _originalFolderPath = string.Empty;
         _viewModel.IsInitialReview = false;
+        _viewModel.TargetFolderDisplayPath = string.Empty;
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
         _viewModel.FinalReviewButtonText = "Start Final Review...";
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
+    }
+
+    private static string BuildDisplayPath(string folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var trimmed = Path.TrimEndingDirectorySeparator(folderPath);
+            var folderName = Path.GetFileName(trimmed);
+            var parent = Path.GetDirectoryName(trimmed);
+            var parentName = string.IsNullOrWhiteSpace(parent) ? string.Empty : Path.GetFileName(parent);
+
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                return trimmed;
+            }
+
+            if (string.IsNullOrWhiteSpace(parentName))
+            {
+                return $@"...\{folderName}";
+            }
+
+            return $@"...\{parentName}\{folderName}";
+        }
+        catch
+        {
+            return folderPath;
+        }
     }
 
     private enum InitialReviewFinishAction
@@ -1348,11 +1383,13 @@ public partial class MainWindow : Window
                 {
                     if (mappingCts.IsCancellationRequested) { return; }
 
-                    var origFileNoExt = Path.GetFileNameWithoutExtension(origFilePath);
-                    if (!mappingItemsDict.TryGetValue(origFileNoExt, out var item))
+                    string origFileNoExt = Path.GetFileNameWithoutExtension(origFilePath);
+                    if (!mappingItemsDict.TryGetValue(origFileNoExt, out ImageFileMappingInfo item))
                     {
-                        var notMappedFileName = string.Concat("_not_mapped_", Path.GetFileName(origFilePath));
-                        _fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => notMappedFileName);
+                        ReadOnlySpan<char> notMappedSuffix = "_not_mapped_";
+                        string notMappedFileName = string.Concat(notMappedSuffix, Path.GetFileName(origFilePath.AsSpan()));
+                        _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, notMappedFileName);
+                        //_fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => notMappedFileName);
                         continue;
                     }
 
@@ -1374,46 +1411,55 @@ public partial class MainWindow : Window
                         maxPageNumber = Math.Max(maxPageNumber, pageNumber);
                     }
 
-                    var sourceExt = Path.GetExtension(origFilePath);
+                    ReadOnlySpan<char> sourceExt = Path.GetExtension(origFilePath.AsSpan());
                     switch (status)
                     {
                         case ImageFileItem.ReviewStatusType.Pending:
-                            var originalBase = item.NewName.AsSpan();
-                            var notReviewedFileName = string.Concat("_not_reviewed_", originalBase, sourceExt);
-                            _fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
+                            ReadOnlySpan<char> originalBase = item.NewName.AsSpan();
+                            ReadOnlySpan<char> prefix = "_not_reviewed_";
+                            string notReviewedFileName = string.Concat(prefix, originalBase, sourceExt);
+                            _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, notReviewedFileName);
+                            //_fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => notReviewedFileName);
                             issueReport.Append(bookName);
                             issueReport.Append('\t');
-                            issueReport.Append(item.NewName);
+                            issueReport.Append(item.NewName.AsSpan());
                             issueReport.Append('\t');
                             issueReport.AppendLine("Not Reviewed");
                             break;
 
                         case ImageFileItem.ReviewStatusType.Approved:
-                            var approvedFileName = string.Concat(item.NewName, sourceExt);
-                            _fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => approvedFileName);
+                            string approvedFileName = string.Concat(item.NewName.AsSpan(), sourceExt);
+                            _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, approvedFileName);
+                            //_fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => approvedFileName);
                             approvedCount++;
                             break;
 
                         case ImageFileItem.ReviewStatusType.Rejected:
                             rejectedCount++;
-                            var suffix = rejectReason switch
+                            ReadOnlySpan<char> suffix = rejectReason switch
                             {
                                 ImageFileItem.RejectReasonType.BadOriginal => "_bo",
                                 ImageFileItem.RejectReasonType.Rescan => "_rs",
                                 _ => "_rejected",
                             };
-                            var rejectedFileName = string.Concat(item.NewName, sourceExt);
+                            //var rejectedFileName = string.Concat(item.NewName, sourceExt);
                             //_fileProcessor.SaveFile(origFilePath, p => p, rejectedFolder, _ => rejectedFileName);
-                            var suffixed = _fileProcessor.BuildSuffixedFileName(rejectedFileName, suffix);
-                            _fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => suffixed);
-                            var issueText = rejectReason == ImageFileItem.RejectReasonType.None
-                                ? "Rejected"
-                                : rejectReason.ToString();
+                            string suffixed = string.Concat(item.NewName.AsSpan(), suffix, sourceExt);
+                            _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, suffixed);
+                            //_fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => suffixed);
+                            //string issueText = rejectReason == ImageFileItem.RejectReasonType.None
+                            //    ? "Rejected"
+                            //    : rejectReason.ToString();
                             issueReport.Append(bookName);
                             issueReport.Append('\t');
-                            issueReport.Append(GetFileNameWithoutExtension(item.NewName.AsSpan()));
+                            issueReport.Append(item.NewName.AsSpan());
                             issueReport.Append('\t');
-                            issueReport.AppendLine(issueText);
+                            issueReport.AppendLine(rejectReason switch
+                            {
+                                ImageFileItem.RejectReasonType.BadOriginal => "Bad Original",
+                                ImageFileItem.RejectReasonType.Rescan => "Rescan",
+                                _ => "Rejected",
+                            });
                             break;
                     }
 
@@ -1425,23 +1471,23 @@ public partial class MainWindow : Window
                 {
                     return;
                 }
-
+                var missingBlock = new StringBuilder();
                 for (var i = 1; i <= maxPageNumber; i++)
                 {
                     if (!pagesWithNumbers.Contains(i))
                     {
-                        issueReport.Append(bookName);
-                        issueReport.Append('\t');
-                        issueReport.Append(i);
-                        issueReport.Append('\t');
-                        issueReport.AppendLine("Missing");
+                        missingBlock.Append(bookName);
+                        missingBlock.Append('\t');
+                        missingBlock.Append(i);
+                        missingBlock.Append('\t');
+                        missingBlock.AppendLine("Missing");
                         missingCount++;
                     }
                 }
-                //if (rejectedCount == 0)
-                //{
-                //    Directory.Delete(rejectedFolder, true);
-                //}
+                if (missingCount > 0)
+                {
+                    issueReport.Insert(0, missingBlock.ToString());
+                }
             }, mappingCts.Token);
         }
         catch (OperationCanceledException)
@@ -1459,10 +1505,8 @@ public partial class MainWindow : Window
         }
 
         var reportText = issueReport.ToString();
-
-        string projectName = Path.GetFileName(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(_originalFolderPath))) ?? "undefined";
         var summaryText =
-            $"{projectName}\\{bookName}:\n\n" +
+            $"{_viewModel.TargetFolderDisplayPath}:\n\n" +
             $"Mapping performed successfully.\n\n" +
             $"Total files: {totalMappedFiles}\n" +
             $"Approved: {approvedCount}\n" +
