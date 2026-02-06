@@ -11,7 +11,8 @@ public sealed class ImageFileItem : INotifyPropertyChanged
     {
         Pending,
         Approved,
-        Rejected
+        Rejected,
+        Custom
     }
 
     public enum RejectReasonType
@@ -20,6 +21,7 @@ public sealed class ImageFileItem : INotifyPropertyChanged
         BadOriginal,
         Rescan
     }
+
 
 
     public ImageFileItem(string filePath)

@@ -42,6 +42,8 @@ public partial class MainWindow : Window
         public int MaxPageNumber;
     }
 
+    private const int MaxCustomStatusCount = 5;
+
     public static readonly RoutedCommand NextImageCommand = new();
     public static readonly RoutedCommand PreviousImageCommand = new();
     public static readonly RoutedCommand BadOriginalCommand = new();
@@ -1457,8 +1459,15 @@ public partial class MainWindow : Window
         }
 
         var reportText = issueReport.ToString();
+
+        string projectName = Path.GetFileName(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(_originalFolderPath))) ?? "undefined";
         var summaryText =
-            $"Mapping performed successfully.\n\nTotal files: {totalMappedFiles}\nApproved: {approvedCount}\nRejected: {rejectedCount}\nMissing: {missingCount}";
+            $"{projectName}\\{bookName}:\n\n" +
+            $"Mapping performed successfully.\n\n" +
+            $"Total files: {totalMappedFiles}\n" +
+            $"Approved: {approvedCount}\n" +
+            $"Rejected: {rejectedCount}\n" +
+            $"Missing: {missingCount}";
         ShowMappingCompleteDialog(summaryText, reportText);
         return true;
     }
