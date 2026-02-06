@@ -1078,43 +1078,59 @@ public partial class MainWindow : Window
 
     private async Task<(ReviewStat folderStat, List<ImageFileMappingInfo>)> CreateInitialReviewResultAsync()
     {
-        string date = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        string date = DateTime.UtcNow.ToString("MM-dd-yyyy HH:mm 'UTC'");
 
-        HashSet<int> pagesWithPageNumbers = new();
-        HashSet<string> notReviewedPages = new();
-        HashSet<string> approvedPages = new();
-        HashSet<string> badOriginalPages = new();
-        HashSet<string> rescanPages = new();
-        HashSet<int> missingPages = new();
+        
 
-        var items = _viewModel.OriginalFiles.ToList();
-        var itemsCount = items.Count;
+        var items = _viewModel.OriginalFiles.ToArray();
+        var itemsCount = items.Length;
         var maxIndex = itemsCount;
 
-        var maxDigitsLen = maxIndex.ToString().Length;
+        HashSet<int> pagesWithPageNumbers = new(itemsCount);
+        HashSet<string> notReviewedPages = new(itemsCount);
+        HashSet<string> approvedPages = new(itemsCount);
+        HashSet<string> badOriginalPages = new(itemsCount);
+        HashSet<string> rescanPages = new(itemsCount);
+        HashSet<int> missingPages = new(itemsCount);
+
+        static int GetMaxDigitsInIndex(int index)
+        {
+            if (index < 0) index = -index; // если вдруг
+            if (index < 10) return 1;
+            if (index < 100) return 2;
+            if (index < 1000) return 3;
+            if (index < 10000) return 4;
+            if (index < 100000) return 5;
+            if (index < 1000000) return 6;
+            if (index < 10000000) return 7;
+            if (index < 100000000) return 8;
+            if (index < 1000000000) return 9;
+            return 10;
+        }
+
+        var maxDigitsLen = GetMaxDigitsInIndex(itemsCount);
         var fileNameBuilder = new FileNameBuilder(maxDigitsLen);
         int maxPageNumber = 0;
         List<ImageFileMappingInfo> folderMappingInfo = new List<ImageFileMappingInfo>(itemsCount);
         await Task.Run(() =>
         {
-            //var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
 
             for (int i = 0; i < itemsCount; i++)
             {
-
-                var newFileName = fileNameBuilder.BuildReviewedFileName(items[i].FilePath, items[i].NewFileName, out bool hasPageNumber);
+                var item = items[i];
+                var newFileName = fileNameBuilder.BuildReviewedFileName(item.FilePath, item.NewFileName, out bool hasPageNumber);
                 if (TryGetNumericPrefix(newFileName.AsSpan(), out var pageNumber, out _)
                     && pageNumber > 0)
                 {
                     pagesWithPageNumbers.Add(pageNumber);
                     maxPageNumber = Math.Max(maxPageNumber, pageNumber);
                 }
-                switch (items[i].ReviewStatus)
+                switch (item.ReviewStatus)
                 {
                     case ImageFileItem.ReviewStatusType.Pending:
 
-                        ReadOnlySpan<char> originalFileName = Path.GetFileNameWithoutExtension(items[i].FilePath.AsSpan());
-                        var notReviewedFileName = string.Concat("_nr_", originalFileName);
+                        ReadOnlySpan<char> originalFileName = Path.GetFileNameWithoutExtension(item.FilePath.AsSpan());
+                        //var notReviewedFileName = string.Concat("_nr_", originalFileName);
                         notReviewedPages.Add(originalFileName.ToString());
                         break;
 
@@ -1123,23 +1139,38 @@ public partial class MainWindow : Window
                         break;
 
                     case ImageFileItem.ReviewStatusType.Rejected:
-                        if (items[i].RejectReason == ImageFileItem.RejectReasonType.BadOriginal)
+                        if (item.RejectReason == ImageFileItem.RejectReasonType.BadOriginal)
                         {
                             badOriginalPages.Add(newFileName);
                         }
-                        else if (items[i].RejectReason == ImageFileItem.RejectReasonType.Rescan)
+                        else if (item.RejectReason == ImageFileItem.RejectReasonType.Rescan)
                         {
                             rescanPages.Add(newFileName);
                         }
                         break;
                 }
 
+                string statusStr = item.ReviewStatus switch
+                {
+                    ImageFileItem.ReviewStatusType.Pending => "Pending",
+                    ImageFileItem.ReviewStatusType.Approved => "Approved",
+                    ImageFileItem.ReviewStatusType.Rejected => "Rejected",
+                    _ => "Pending"
+                };
+
+                string rejectStr = item.RejectReason switch
+                {
+                    ImageFileItem.RejectReasonType.BadOriginal => "BadOriginal",
+                    ImageFileItem.RejectReasonType.Rescan => "Rescan",
+                    _ => "None"
+                };
+
                 ImageFileMappingInfo itemMappingInfo = new ImageFileMappingInfo
                 {
-                    OriginalName = Path.GetFileNameWithoutExtension(items[i].FileName),
+                    OriginalName = Path.GetFileNameWithoutExtension(item.FileName),
                     NewName = Path.GetFileNameWithoutExtension(newFileName),
-                    ReviewStatus = items[i].ReviewStatus.ToString(),
-                    RejectReason = items[i].RejectReason.ToString(),
+                    ReviewStatus = statusStr,
+                    RejectReason = rejectStr,
                     ReviewDate = date
                 };
                 folderMappingInfo.Add(itemMappingInfo);
@@ -1149,7 +1180,7 @@ public partial class MainWindow : Window
         {
             if (!pagesWithPageNumbers.Contains(i))
             {
-                missingPages.Add(i);
+                missingPages.Add(i);    
             }
         }
         return (new ReviewStat
