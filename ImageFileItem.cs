@@ -82,7 +82,6 @@ public sealed class ImageFileItem : INotifyPropertyChanged
             OnPropertyChanged(nameof(StatusBrush));
         }
     }
-
     public string StatusCode =>
         ReviewStatus switch
         {

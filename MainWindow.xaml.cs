@@ -224,7 +224,7 @@ public partial class MainWindow : Window
         _viewModel.IsAutoFillEnabled = false;
 
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
-        ReadOnlySpan<char> span = _originalFolderIndex.LastIndex.ToString().AsSpan();
+        //ReadOnlySpan<char> span = _originalFolderIndex.LastIndex.ToString().AsSpan();
         
         if (_originalFolderIndex.LastIndex < 0)
         {
