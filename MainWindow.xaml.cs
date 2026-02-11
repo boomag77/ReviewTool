@@ -352,6 +352,10 @@ public partial class MainWindow : Window
             var folderName = Path.GetFileName(trimmed);
             var parent = Path.GetDirectoryName(trimmed);
             var parentName = string.IsNullOrWhiteSpace(parent) ? string.Empty : Path.GetFileName(parent);
+            if (!TryGetProjectName(folderPath, out var projectName))
+            {
+                projectName = "Undefined";
+            }
 
             if (string.IsNullOrWhiteSpace(folderName))
             {
@@ -363,7 +367,7 @@ public partial class MainWindow : Window
                 return $@"...\{folderName}";
             }
 
-            return $@"...\{parentName}\{folderName}";
+            return $@"... {projectName}...\{parentName}\{folderName}";
         }
         catch
         {
@@ -1716,6 +1720,74 @@ public partial class MainWindow : Window
             return fileName;
         }
         return fileName.Slice(0, i);
+    }
+
+    private static bool IsSeparator(char c) => c == '\\';
+    public static bool TryGetProjectName(ReadOnlySpan<char> path, out ReadOnlySpan<char> projectName)
+    {
+        projectName = default;
+
+        path = TrimTrailingSeparators(path);
+
+        if (path.IsEmpty)
+            return false;
+
+        int end = path.Length; // end-exclusive
+        int i = end - 1;
+
+        while (true)
+        {
+            int segStart = LastIndexOfSeparator(path, i) + 1;
+            var seg = path.Slice(segStart, end - segStart);
+
+            if (!seg.IsEmpty && char.IsDigit(seg[0]))
+            {
+                int parentEnd = segStart - 1; 
+                if (parentEnd < 0)
+                    return false;
+
+                while (parentEnd >= 0 && IsSeparator(path[parentEnd]))
+                    parentEnd--;
+
+                if (parentEnd < 0)
+                    return false;
+
+                int parentStart = LastIndexOfSeparator(path, parentEnd) + 1;
+                projectName = path.Slice(parentStart, parentEnd - parentStart + 1);
+                return !projectName.IsEmpty;
+            }
+
+            int prevSep = segStart - 1;
+            if (prevSep <= 0)
+                return false;
+
+            while (prevSep >= 0 && IsSeparator(path[prevSep]))
+                prevSep--;
+
+            if (prevSep < 0)
+                return false;
+
+            end = prevSep + 1;
+            i = prevSep;
+        }
+    }
+
+    private static ReadOnlySpan<char> TrimTrailingSeparators(ReadOnlySpan<char> path)
+    {
+        int end = path.Length;
+        while (end > 0 && IsSeparator(path[end - 1]))
+            end--;
+        return path[..end];
+    }
+
+    private static int LastIndexOfSeparator(ReadOnlySpan<char> path, int fromInclusive)
+    {
+        for (int i = fromInclusive; i >= 0; i--)
+        {
+            if (IsSeparator(path[i]))
+                return i;
+        }
+        return -1;
     }
 
     private void ShowMappingCompleteDialog(string summaryText, string reportText)
