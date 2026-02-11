@@ -81,6 +81,8 @@ public partial class MainWindow : Window
 
     private readonly CancellationTokenSource _cts;
 
+    private string? _currentReviewerName;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -203,6 +205,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!TryPromptReviewerName(out var reviewerName))
+        {
+            return;
+        }
+        _currentReviewerName = reviewerName;
+
         var originalFolder = SelectFolder("Select original images folder");
         if (string.IsNullOrWhiteSpace(originalFolder))
         {
@@ -311,6 +319,7 @@ public partial class MainWindow : Window
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
+        _currentReviewerName = null;
     }
 
     private void CancelInitialReview()
@@ -327,6 +336,7 @@ public partial class MainWindow : Window
         _viewModel.FinalReviewButtonText = "Start Final Review...";
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
+        _currentReviewerName = null;
     }
 
     private static string BuildDisplayPath(string folderPath)
@@ -468,6 +478,145 @@ public partial class MainWindow : Window
         dialog.Content = root;
         dialog.ShowDialog();
         return result;
+    }
+
+    private bool TryPromptReviewerName(out string reviewerName)
+    {
+        var dialog = new Window
+        {
+            Owner = this,
+            Title = "Reviewer Name",
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize,
+            MinWidth = 360,
+            Background = SystemColors.ControlBrush
+        };
+
+        var root = new StackPanel
+        {
+            Margin = new Thickness(16),
+            Orientation = Orientation.Vertical
+        };
+
+        root.Children.Add(new TextBlock
+        {
+            Text = "Enter reviewer name (letters only, max 15):",
+            Margin = new Thickness(0, 0, 0, 8),
+            Foreground = SystemColors.ControlTextBrush
+        });
+
+        var nameTextBox = new TextBox
+        {
+            MinWidth = 260,
+            MaxLength = 15,
+            Text = _currentReviewerName ?? string.Empty
+        };
+        root.Children.Add(nameTextBox);
+
+        var validationText = new TextBlock
+        {
+            Margin = new Thickness(0, 6, 0, 0),
+            Foreground = Brushes.IndianRed,
+            Visibility = Visibility.Collapsed
+        };
+        root.Children.Add(validationText);
+
+        var buttons = new StackPanel
+        {
+            Margin = new Thickness(0, 12, 0, 0),
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        var okButton = new Button
+        {
+            Content = "Start Review",
+            MinWidth = 100,
+            Margin = new Thickness(0, 0, 8, 0),
+            IsDefault = true,
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            MinWidth = 80,
+            IsCancel = true,
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+
+        void RefreshValidation()
+        {
+            var validationError = ValidateReviewerName(nameTextBox.Text);
+            var hasError = validationError is not null;
+            validationText.Text = validationError ?? string.Empty;
+            validationText.Visibility = hasError ? Visibility.Visible : Visibility.Collapsed;
+            okButton.IsEnabled = !hasError;
+        }
+
+        nameTextBox.TextChanged += (_, _) => RefreshValidation();
+        okButton.Click += (_, _) =>
+        {
+            if (ValidateReviewerName(nameTextBox.Text) is not null)
+            {
+                RefreshValidation();
+                return;
+            }
+
+            dialog.DialogResult = true;
+            dialog.Close();
+        };
+        cancelButton.Click += (_, _) =>
+        {
+            dialog.DialogResult = false;
+            dialog.Close();
+        };
+
+        buttons.Children.Add(okButton);
+        buttons.Children.Add(cancelButton);
+        root.Children.Add(buttons);
+
+        dialog.Content = root;
+        dialog.Loaded += (_, _) =>
+        {
+            nameTextBox.Focus();
+            nameTextBox.SelectAll();
+            RefreshValidation();
+        };
+
+        var accepted = dialog.ShowDialog() == true;
+        if (!accepted)
+        {
+            reviewerName = string.Empty;
+            return false;
+        }
+
+        reviewerName = nameTextBox.Text.Trim();
+        return true;
+    }
+
+    private static string? ValidateReviewerName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return "Name is required.";
+        }
+
+        var trimmedName = name.Trim();
+        if (trimmedName.Length > 15)
+        {
+            return "Name must be 15 letters or fewer.";
+        }
+
+        foreach (var character in trimmedName)
+        {
+            if (!char.IsLetter(character))
+            {
+                return "Use letters only (no spaces or symbols).";
+            }
+        }
+
+        return null;
     }
 
 
@@ -1074,6 +1223,7 @@ public partial class MainWindow : Window
         public string ReviewStatus;
         public string RejectReason;
         public string ReviewDate;
+        public string? ReviewerName;
     }
 
     private async Task<(ReviewStat folderStat, List<ImageFileMappingInfo>)> CreateInitialReviewResultAsync()
@@ -1171,7 +1321,8 @@ public partial class MainWindow : Window
                     NewName = Path.GetFileNameWithoutExtension(newFileName),
                     ReviewStatus = statusStr,
                     RejectReason = rejectStr,
-                    ReviewDate = date
+                    ReviewDate = date,
+                    ReviewerName = _currentReviewerName
                 };
                 folderMappingInfo.Add(itemMappingInfo);
             }
@@ -1229,7 +1380,7 @@ public partial class MainWindow : Window
 
         var mappingBuilder = new StringBuilder();
         mappingBuilder.AppendLine(Path.GetFileName(Path.TrimEndingDirectorySeparator(_originalFolderPath) ?? "undefined"));
-        mappingBuilder.AppendLine("OriginalName\tNewName\tReviewStatus\tRejectReason\tReviewDate");
+        mappingBuilder.AppendLine("OriginalName\tNewName\tReviewStatus\tRejectReason\tReviewDate\tReviewerName");
         if (mappingInfo != null)
         {
             foreach (var item in mappingInfo)
@@ -1244,7 +1395,9 @@ public partial class MainWindow : Window
                 mappingBuilder.Append('\t');
                 mappingBuilder.Append(Sanitize(item.RejectReason));
                 mappingBuilder.Append('\t');
-                mappingBuilder.AppendLine(Sanitize(item.ReviewDate));
+                mappingBuilder.Append(Sanitize(item.ReviewDate));
+                mappingBuilder.Append('\t');
+                mappingBuilder.AppendLine(Sanitize(item.ReviewerName));
             }
         }
 
@@ -1316,7 +1469,7 @@ public partial class MainWindow : Window
             {
                 continue;
             }
-
+            ReadOnlySpan<char> lineSpan = line.AsSpan();
             var parts = line.Split('\t');
             if (parts.Length < 5)
             {
