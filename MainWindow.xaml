@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ReviewTool"
         mc:Ignorable="d"
-        Title="ReviewTool" Height="720" Width="1200" MinHeight="640" MinWidth="980"
+        Title="ReviewTool v1.8b" Height="720" Width="1200" MinHeight="640" MinWidth="980"
         Background="LightGray"
         Icon="/Assets/appIcon.ico"
         Focusable="True"

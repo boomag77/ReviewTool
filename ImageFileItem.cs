@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -10,9 +11,9 @@ public sealed class ImageFileItem : INotifyPropertyChanged
     public enum ReviewStatusType
     {
         Pending,
-        Approved,
+        Accepted,
         Rejected,
-        Custom
+        Flagged
     }
 
     public enum RejectReasonType
@@ -20,6 +21,16 @@ public sealed class ImageFileItem : INotifyPropertyChanged
         None,
         BadOriginal,
         Rescan
+    }
+
+    public struct CustomFlag
+    {
+        public string Name { get; init; }
+        public string ButtonTitle { get; init; }
+        public string TwoCharCode { get; init; }
+        public string? Suffix { get; init; }
+        public string? Prefix { get; init; }
+        public string Hotkey { get; init; }
     }
 
 
@@ -85,7 +96,7 @@ public sealed class ImageFileItem : INotifyPropertyChanged
     public string StatusCode =>
         ReviewStatus switch
         {
-            ReviewStatusType.Approved => "AC",
+            ReviewStatusType.Accepted => "AC",
             ReviewStatusType.Rejected => RejectReason switch
             {
                 RejectReasonType.Rescan => "RS",
@@ -98,7 +109,7 @@ public sealed class ImageFileItem : INotifyPropertyChanged
     public Brush StatusBrush =>
         ReviewStatus switch
         {
-            ReviewStatusType.Approved => Brushes.LimeGreen,
+            ReviewStatusType.Accepted => Brushes.LimeGreen,
             ReviewStatusType.Rejected => Brushes.OrangeRed,
             _ => Brushes.Transparent,
         };

@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Security.Policy;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -86,7 +85,6 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        //_fileNameBuilder = new FileNameBuilder();
 
         DataContext = _viewModel;
         Loaded += (_, _) => Keyboard.Focus(this);
@@ -233,7 +231,7 @@ public partial class MainWindow : Window
 
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
         //ReadOnlySpan<char> span = _originalFolderIndex.LastIndex.ToString().AsSpan();
-        
+
         if (_originalFolderIndex.LastIndex < 0)
         {
             ResetProcessedIndex();
@@ -262,7 +260,7 @@ public partial class MainWindow : Window
             capturedtaskResult = taskResult;
             _capturedMappingInfo = mappingInfo;
         }
-        
+
 
         if (actionResult == InitialReviewFinishAction.Apply)
         {
@@ -721,7 +719,7 @@ public partial class MainWindow : Window
             }
             if (_isInitialReview)
             {
-                SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Approved,
+                SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Accepted,
                                                ImageFileItem.RejectReasonType.None,
                                                null);
                 await NavigateImages(1);
@@ -931,7 +929,7 @@ public partial class MainWindow : Window
         }
         _lastHandledIndex = _currentImageIndex;
 
-        SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Approved,
+        SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Accepted,
                                        ImageFileItem.RejectReasonType.None,
                                        null);
         await NavigateImages(1);
@@ -1234,7 +1232,7 @@ public partial class MainWindow : Window
     {
         string date = DateTime.UtcNow.ToString("MM-dd-yyyy HH:mm 'UTC'");
 
-        
+
 
         var items = _viewModel.OriginalFiles.ToArray();
         var itemsCount = items.Length;
@@ -1288,7 +1286,7 @@ public partial class MainWindow : Window
                         notReviewedPages.Add(originalFileName.ToString());
                         break;
 
-                    case ImageFileItem.ReviewStatusType.Approved:
+                    case ImageFileItem.ReviewStatusType.Accepted:
                         approvedPages.Add(newFileName);
                         break;
 
@@ -1307,7 +1305,7 @@ public partial class MainWindow : Window
                 string statusStr = item.ReviewStatus switch
                 {
                     ImageFileItem.ReviewStatusType.Pending => "Pending",
-                    ImageFileItem.ReviewStatusType.Approved => "Approved",
+                    ImageFileItem.ReviewStatusType.Accepted => "Approved",
                     ImageFileItem.ReviewStatusType.Rejected => "Rejected",
                     _ => "Pending"
                 };
@@ -1335,7 +1333,7 @@ public partial class MainWindow : Window
         {
             if (!pagesWithPageNumbers.Contains(i))
             {
-                missingPages.Add(i);    
+                missingPages.Add(i);
             }
         }
         return (new ReviewStat
@@ -1426,7 +1424,7 @@ public partial class MainWindow : Window
             }
             mappingFilePath = saveDialog.FileName;
         }
-        
+
         try
         {
             File.WriteAllText(mappingFilePath, mappingBuilder.ToString(), Encoding.UTF8);
@@ -1622,7 +1620,7 @@ public partial class MainWindow : Window
                             issueReport.AppendLine("Not Reviewed");
                             break;
 
-                        case ImageFileItem.ReviewStatusType.Approved:
+                        case ImageFileItem.ReviewStatusType.Accepted:
                             string approvedFileName = string.Concat(item.NewName.AsSpan(), sourceExt);
                             _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, approvedFileName);
                             approvedCount++;
@@ -1742,7 +1740,7 @@ public partial class MainWindow : Window
 
             if (!seg.IsEmpty && char.IsDigit(seg[0]))
             {
-                int parentEnd = segStart - 1; 
+                int parentEnd = segStart - 1;
                 if (parentEnd < 0)
                     return false;
 
@@ -2063,7 +2061,7 @@ public partial class MainWindow : Window
             }
             _lastHandledIndex = _currentImageIndex;
 
-            SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Approved,
+            SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Accepted,
                                            ImageFileItem.RejectReasonType.None,
                                            null);
         }
