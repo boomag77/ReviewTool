@@ -48,3 +48,6 @@ secret.json
 
 #data
 ImgViewer/Models/ML/model.data
+
+#docs
+*.md
