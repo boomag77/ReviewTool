@@ -94,6 +94,61 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="PerformMappingContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="Background" Value="#2F3136"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PerformMappingContextMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#2F3136"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="MenuItemBorder"
+                                Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header"
+                                              RecognizesAccessKey="True"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="MenuItemBorder" Property="Background" Value="#3A3F47"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PerformMappingMenuDividerStyle" TargetType="Separator">
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Background" Value="#464A52"/>
+        </Style>
+
         <Style x:Key="FinalReviewButtonStyle" TargetType="Button" BasedOn="{StaticResource ElevatedRoundedButton}">
             <Setter Property="Visibility" Value="Visible"/>
             <Style.Triggers>
@@ -168,9 +223,29 @@
                     <Button Style="{StaticResource CancelReviewButtonStyle}" Content="Cancel review" Margin="6,0,0,0"
                             Focusable="False"
                             Click="CancelReview_Click" />
-                    <Button Style="{StaticResource PerformMappingButtonStyle}" Content="{Binding PerformMappingButtonText}" Margin="6,0,0,0"
+                    <Button x:Name="PerformMappingDropdownButton"
+                            Style="{StaticResource PerformMappingButtonStyle}"
+                            Content="{Binding PerformMappingButtonText}"
+                            Margin="6,0,0,0"
+                            Padding="8,4"
+                            HorizontalContentAlignment="Left"
                             Focusable="False"
-                            Click="PerformMapping_Click" />
+                            Click="PerformMappingDropdownButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu Style="{StaticResource PerformMappingContextMenuStyle}"
+                                         Placement="Bottom"
+                                         Opened="PerformMappingContextMenu_Opened"
+                                         Closed="PerformMappingContextMenu_Closed">
+                                <MenuItem Style="{StaticResource PerformMappingContextMenuItemStyle}"
+                                          Header="to Single folder"
+                                          Click="PerformMapping_Click" />
+                                <Separator Style="{StaticResource PerformMappingMenuDividerStyle}" />
+                                <MenuItem Style="{StaticResource PerformMappingContextMenuItemStyle}"
+                                          Header="to Multiple folders"
+                                          Click="PerformMappingToMultipleFolders_Click" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                     <Button Style="{StaticResource FinalReviewButtonStyle}" Content="{Binding FinalReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False" IsEnabled="False"
                             Click="StartFinalReview_Click" />

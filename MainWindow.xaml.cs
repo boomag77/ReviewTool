@@ -77,6 +77,10 @@ public partial class MainWindow : Window
     private string _originalFolderPath = string.Empty;
 
     private List<ImageFileMappingInfo> _capturedMappingInfo = new();
+    private bool _hasPerformMappingDefaultVisual;
+    private Brush? _performMappingDefaultBackground;
+    private Brush? _performMappingDefaultBorderBrush;
+    private Thickness _performMappingDefaultBorderThickness;
 
     private readonly CancellationTokenSource _cts;
 
@@ -798,57 +802,191 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var dialog = new OpenFileDialog
-            {
-                Title = "Select mapping TSV file",
-                Filter = "TSV files (*.tsv)|*.tsv|All files (*.*)|*.*"
-            };
-
-            if (dialog.ShowDialog() != true)
+            var mappingFilePath = SelectMappingFilePath();
+            if (string.IsNullOrWhiteSpace(mappingFilePath))
             {
                 return;
             }
 
-            var (bookName, mappingInfo) = ParseMappingInfoFrom(dialog.FileName);
+            var (bookName, mappingInfo) = ParseMappingInfoFrom(mappingFilePath);
             if (mappingInfo.Count == 0)
             {
                 MessageBox.Show(this, "Mapping file is empty or invalid.", "Mapping", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            if (bookName != Path.GetFileName(Path.TrimEndingDirectorySeparator(originalFolder)))
-            {
-                var result = MessageBox.Show(this,
-                    $"The mapping file was created for \"{bookName}\", but the selected folder is \"{Path.GetFileName(Path.TrimEndingDirectorySeparator(originalFolder))}\". Do you want to proceed?",
-                    "Mapping",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-                if (result != MessageBoxResult.Yes)
-                {
-                    return;
-                }
-            }
-
-            var initialReviewFolderPath = _fileProcessor.GetInitialReviewFolderPath(originalFolder);
-            if (Directory.Exists(initialReviewFolderPath))
-            {
-                var result = MessageBox.Show(this,
-                    $"{Path.GetFileName(initialReviewFolderPath)} already exists. Do you want to proceed?",
-                    "Initial Review",
-                    MessageBoxButton.OKCancel,
-                    MessageBoxImage.Question);
-                if (result != MessageBoxResult.OK)
-                {
-                    return;
-                }
-            }
-
-            _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolder);
-            await TryPerformMappingToAsync(originalFolder, mappingInfo);
+            await TryPerformMappingForFolderAsync(originalFolder, bookName, mappingInfo);
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private async void PerformMappingToMultipleFolders_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var selectedFolders = ShowSelectMultipleFoldersWindow();
+            if (selectedFolders.Count == 0)
+            {
+                return;
+            }
+
+            var mappingFilePath = SelectMappingFilePath();
+            if (string.IsNullOrWhiteSpace(mappingFilePath))
+            {
+                return;
+            }
+
+            var (bookName, mappingInfo) = ParseMappingInfoFrom(mappingFilePath);
+            if (mappingInfo.Count == 0)
+            {
+                MessageBox.Show(this, "Mapping file is empty or invalid.", "Mapping", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var previousOriginalFolderPath = _originalFolderPath;
+            var mappedFoldersCount = 0;
+            foreach (var folderPath in selectedFolders)
+            {
+                var wasMapped = await TryPerformMappingForFolderAsync(folderPath, bookName, mappingInfo);
+                if (wasMapped)
+                {
+                    mappedFoldersCount++;
+                }
+            }
+
+            _originalFolderPath = previousOriginalFolderPath;
+
+            MessageBox.Show(
+                this,
+                $"Mapped folders: {mappedFoldersCount}/{selectedFolders.Count}",
+                "Mapping",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task<bool> TryPerformMappingForFolderAsync(
+        string originalFolderPath,
+        string mappingBookName,
+        IReadOnlyList<ImageFileMappingInfo> mappingInfo)
+    {
+        if (string.IsNullOrWhiteSpace(originalFolderPath)
+            || mappingInfo is null
+            || mappingInfo.Count == 0)
+        {
+            return false;
+        }
+
+        if (!CanProceedWhenMappingBookNameDiffers(originalFolderPath, mappingBookName))
+        {
+            return false;
+        }
+
+        if (!CanProceedWhenInitialReviewFolderExists(originalFolderPath))
+        {
+            return false;
+        }
+
+        _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolderPath);
+        return await TryPerformMappingToAsync(originalFolderPath, mappingInfo);
+    }
+
+    private bool CanProceedWhenMappingBookNameDiffers(string originalFolderPath, string mappingBookName)
+    {
+        var selectedFolderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(originalFolderPath));
+        if (string.Equals(mappingBookName, selectedFolderName, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var result = MessageBox.Show(this,
+            $"The mapping file was created for \"{mappingBookName}\", but the selected folder is \"{selectedFolderName}\". Do you want to proceed?",
+            "Mapping",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        return result == MessageBoxResult.Yes;
+    }
+
+    private bool CanProceedWhenInitialReviewFolderExists(string originalFolderPath)
+    {
+        var initialReviewFolderPath = _fileProcessor.GetInitialReviewFolderPath(originalFolderPath);
+        if (!Directory.Exists(initialReviewFolderPath))
+        {
+            return true;
+        }
+
+        var result = MessageBox.Show(this,
+            $"{Path.GetFileName(initialReviewFolderPath)} already exists. Do you want to proceed?",
+            "Initial Review",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question);
+        return result == MessageBoxResult.OK;
+    }
+
+    private void PerformMappingDropdownButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { ContextMenu: not null } performMappingButton)
+        {
+            return;
+        }
+
+        performMappingButton.ContextMenu.PlacementTarget = performMappingButton;
+        performMappingButton.ContextMenu.IsOpen = true;
+    }
+
+    private void PerformMappingContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        CapturePerformMappingButtonDefaultVisual();
+        ApplyPerformMappingButtonOpenVisual();
+    }
+
+    private void PerformMappingContextMenu_Closed(object sender, RoutedEventArgs e)
+    {
+        RestorePerformMappingButtonDefaultVisual();
+    }
+
+    private void CapturePerformMappingButtonDefaultVisual()
+    {
+        if (_hasPerformMappingDefaultVisual || PerformMappingDropdownButton is null)
+        {
+            return;
+        }
+
+        _performMappingDefaultBackground = PerformMappingDropdownButton.Background;
+        _performMappingDefaultBorderBrush = PerformMappingDropdownButton.BorderBrush;
+        _performMappingDefaultBorderThickness = PerformMappingDropdownButton.BorderThickness;
+        _hasPerformMappingDefaultVisual = true;
+    }
+
+    private void ApplyPerformMappingButtonOpenVisual()
+    {
+        if (PerformMappingDropdownButton is null)
+        {
+            return;
+        }
+
+        var accentBrush = TryFindResource("AccentBrush") as Brush ?? Brushes.DodgerBlue;
+        PerformMappingDropdownButton.Background = new SolidColorBrush(Color.FromRgb(0x1D, 0x5F, 0xD5));
+        PerformMappingDropdownButton.BorderBrush = accentBrush;
+        PerformMappingDropdownButton.BorderThickness = new Thickness(1);
+    }
+
+    private void RestorePerformMappingButtonDefaultVisual()
+    {
+        if (!_hasPerformMappingDefaultVisual || PerformMappingDropdownButton is null)
+        {
+            return;
+        }
+
+        PerformMappingDropdownButton.Background = _performMappingDefaultBackground;
+        PerformMappingDropdownButton.BorderBrush = _performMappingDefaultBorderBrush;
+        PerformMappingDropdownButton.BorderThickness = _performMappingDefaultBorderThickness;
     }
 
     private void OriginalViewbox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1134,6 +1272,196 @@ public partial class MainWindow : Window
         };
 
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
+    }
+
+    private List<string> ShowSelectMultipleFoldersWindow()
+    {
+        var selectedFolders = new ObservableCollection<string>();
+
+        var dialog = new Window
+        {
+            Owner = this,
+            Title = "Selected folders",
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize,
+            MinWidth = 560,
+            MinHeight = 340,
+            Background = SystemColors.ControlBrush,
+        };
+
+        var root = new Grid
+        {
+            Margin = new Thickness(16),
+        };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var caption = new TextBlock
+        {
+            Text = "Selected folders",
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 10),
+            Foreground = SystemColors.ControlTextBrush,
+        };
+        Grid.SetRow(caption, 0);
+        root.Children.Add(caption);
+
+        var listBox = new ListBox
+        {
+            MinWidth = 520,
+            MinHeight = 220,
+            ItemsSource = selectedFolders,
+            BorderThickness = new Thickness(1),
+            BorderBrush = Brushes.Gray,
+        };
+        Grid.SetRow(listBox, 1);
+        root.Children.Add(listBox);
+
+        var buttonsRow = new Grid
+        {
+            Margin = new Thickness(0, 12, 0, 0),
+        };
+        buttonsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        buttonsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        buttonsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        buttonsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        buttonsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        buttonsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        Button? applyButton = null;
+
+        void UpdateApplyButtonState()
+        {
+            if (applyButton is null)
+            {
+                return;
+            }
+
+            applyButton.IsEnabled = selectedFolders.Count > 0;
+        }
+
+        var addFolderButton = new Button
+        {
+            Content = "Add folder...",
+            MinWidth = 104,
+            Margin = new Thickness(0, 0, 8, 0),
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        addFolderButton.Click += (_, _) =>
+        {
+            var folderPath = SelectFolder("Select original images folder");
+            if (string.IsNullOrWhiteSpace(folderPath))
+            {
+                return;
+            }
+
+            var normalizedPath = Path.TrimEndingDirectorySeparator(folderPath);
+            if (selectedFolders.Contains(normalizedPath, StringComparer.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            selectedFolders.Add(normalizedPath);
+            UpdateApplyButtonState();
+        };
+        Grid.SetColumn(addFolderButton, 0);
+        buttonsRow.Children.Add(addFolderButton);
+
+        var removeFolderButton = new Button
+        {
+            Content = "Remove",
+            MinWidth = 90,
+            Margin = new Thickness(0, 0, 8, 0),
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        removeFolderButton.Click += (_, _) =>
+        {
+            if (listBox.SelectedItem is not string folderPath)
+            {
+                return;
+            }
+
+            selectedFolders.Remove(folderPath);
+            UpdateApplyButtonState();
+        };
+        Grid.SetColumn(removeFolderButton, 1);
+        buttonsRow.Children.Add(removeFolderButton);
+
+        var clearListButton = new Button
+        {
+            Content = "Clear",
+            MinWidth = 78,
+            Margin = new Thickness(0, 0, 8, 0),
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        clearListButton.Click += (_, _) =>
+        {
+            selectedFolders.Clear();
+            UpdateApplyButtonState();
+        };
+        Grid.SetColumn(clearListButton, 2);
+        buttonsRow.Children.Add(clearListButton);
+
+        applyButton = new Button
+        {
+            Content = "Apply",
+            MinWidth = 88,
+            Margin = new Thickness(0, 0, 8, 0),
+            IsDefault = true,
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        applyButton.Click += (_, _) =>
+        {
+            if (selectedFolders.Count == 0)
+            {
+                return;
+            }
+
+            dialog.DialogResult = true;
+            dialog.Close();
+        };
+        Grid.SetColumn(applyButton, 4);
+        buttonsRow.Children.Add(applyButton);
+
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            MinWidth = 88,
+            IsCancel = true,
+            Style = (Style)FindResource("ElevatedRoundedButton")
+        };
+        cancelButton.Click += (_, _) =>
+        {
+            dialog.DialogResult = false;
+            dialog.Close();
+        };
+        Grid.SetColumn(cancelButton, 5);
+        buttonsRow.Children.Add(cancelButton);
+
+        UpdateApplyButtonState();
+        Grid.SetRow(buttonsRow, 2);
+        root.Children.Add(buttonsRow);
+        dialog.Content = root;
+
+        if (dialog.ShowDialog() != true)
+        {
+            return new List<string>();
+        }
+
+        return selectedFolders.ToList();
+    }
+
+    private static string? SelectMappingFilePath()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select mapping TSV file",
+            Filter = "TSV files (*.tsv)|*.tsv|All files (*.*)|*.*"
+        };
+
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
 
     private async Task BuildFoldersIndexesAsync(string folder, bool isOriginal)
