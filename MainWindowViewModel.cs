@@ -83,6 +83,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         },
     };
     public ReadOnlyObservableCollection<ReviewStatus> StatusButtons { get; }
+    public IReadOnlyList<ReviewStatus> RequiredReviewStatuses => _requiredReviewStatuses;
     public ReadOnlyObservableCollection<ReviewStatus> CustomReviewStatuses { get; }
     public int MaxCustomStatuses => MaxCustomStatusesCount;
 
@@ -141,9 +142,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             {
                 _statusFlagTwoCharCodes.Add(status.StatusFlag.TwoCharCode);
             }
-            if (!string.IsNullOrEmpty(status.StatusFlag.Hotkey))
+            var normalizedHotkey = HotkeyHelper.NormalizeHotkey(status.StatusFlag.Hotkey);
+            if (!string.IsNullOrEmpty(normalizedHotkey))
             {
-                _statusFlagHotkeys.Add(status.StatusFlag.Hotkey);
+                _statusFlagHotkeys.Add(normalizedHotkey);
             }
             if (!string.IsNullOrEmpty(status.StatusFlag.Suffix))
             {
@@ -160,9 +162,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private bool IsDuplicateStatusFlag(ReviewStatusFlag flag)
     {
+        var normalizedHotkey = HotkeyHelper.NormalizeHotkey(flag.Hotkey);
         return (!string.IsNullOrEmpty(flag.Name) && _statusFlagNames.Contains(flag.Name)) ||
                (!string.IsNullOrEmpty(flag.TwoCharCode) && _statusFlagTwoCharCodes.Contains(flag.TwoCharCode)) ||
-               (!string.IsNullOrEmpty(flag.Hotkey) && _statusFlagHotkeys.Contains(flag.Hotkey)) ||
+               (!string.IsNullOrEmpty(normalizedHotkey) && _statusFlagHotkeys.Contains(normalizedHotkey)) ||
                (!string.IsNullOrEmpty(flag.Suffix) && _statusFlagSuffixes.Contains(flag.Suffix)) ||
                (!string.IsNullOrEmpty(flag.Prefix) && _statusFlagPrefixes.Contains(flag.Prefix)) ||
                (!string.IsNullOrEmpty(flag.ButtonTitle) && _statusFlagButtonTitles.Contains(flag.ButtonTitle));
@@ -177,9 +180,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             _statusFlagTwoCharCodes.Add(flag.TwoCharCode);
         }
-        if (!string.IsNullOrEmpty(flag.Hotkey))
+        var normalizedHotkey = HotkeyHelper.NormalizeHotkey(flag.Hotkey);
+        if (!string.IsNullOrEmpty(normalizedHotkey))
         {
-            _statusFlagHotkeys.Add(flag.Hotkey);
+            _statusFlagHotkeys.Add(normalizedHotkey);
         }
         if (!string.IsNullOrEmpty(flag.Suffix))
         {
@@ -204,9 +208,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             _statusFlagTwoCharCodes.Remove(flag.TwoCharCode);
         }
-        if (!string.IsNullOrEmpty(flag.Hotkey))
+        var normalizedHotkey = HotkeyHelper.NormalizeHotkey(flag.Hotkey);
+        if (!string.IsNullOrEmpty(normalizedHotkey))
         {
-            _statusFlagHotkeys.Remove(flag.Hotkey);
+            _statusFlagHotkeys.Remove(normalizedHotkey);
         }
         if (!string.IsNullOrEmpty(flag.Suffix))
         {
@@ -257,9 +262,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public bool TryReplaceCustomReviewStatuses(IReadOnlyList<ReviewStatus> reviewStatuses, out string validationError)
     {
+        return TryApplyReviewStatuses(_requiredReviewStatuses, reviewStatuses, out validationError);
+    }
+
+    public bool TryApplyReviewStatuses(IReadOnlyList<ReviewStatus> requiredStatuses,
+                                       IReadOnlyList<ReviewStatus> customStatuses,
+                                       out string validationError)
+    {
         validationError = string.Empty;
 
-        if (reviewStatuses.Count > MaxCustomStatusesCount)
+        if (requiredStatuses is null || requiredStatuses.Count == 0)
+        {
+            validationError = "Required statuses list cannot be empty.";
+            return false;
+        }
+
+        if (customStatuses.Count > MaxCustomStatusesCount)
         {
             validationError = $"Custom statuses limit is {MaxCustomStatusesCount}.";
             return false;
@@ -272,63 +290,81 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         var nextPrefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var nextButtonTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        void FillSnapshotFlagCollections(ReviewStatusFlag flag)
+        bool TryFillSnapshotFlagCollections(ReviewStatusFlag flag)
         {
             if (!string.IsNullOrEmpty(flag.Name))
             {
-                nextNames.Add(flag.Name);
+                if (!nextNames.Add(flag.Name))
+                {
+                    return false;
+                }
             }
             if (!string.IsNullOrEmpty(flag.TwoCharCode))
             {
-                nextCodes.Add(flag.TwoCharCode);
+                if (!nextCodes.Add(flag.TwoCharCode))
+                {
+                    return false;
+                }
             }
-            if (!string.IsNullOrEmpty(flag.Hotkey))
+            var normalizedHotkey = HotkeyHelper.NormalizeHotkey(flag.Hotkey);
+            if (!string.IsNullOrEmpty(normalizedHotkey))
             {
-                nextHotkeys.Add(flag.Hotkey);
+                if (!nextHotkeys.Add(normalizedHotkey))
+                {
+                    return false;
+                }
             }
             if (!string.IsNullOrEmpty(flag.Suffix))
             {
-                nextSuffixes.Add(flag.Suffix);
+                if (!nextSuffixes.Add(flag.Suffix))
+                {
+                    return false;
+                }
             }
             if (!string.IsNullOrEmpty(flag.Prefix))
             {
-                nextPrefixes.Add(flag.Prefix);
+                if (!nextPrefixes.Add(flag.Prefix))
+                {
+                    return false;
+                }
             }
             if (!string.IsNullOrEmpty(flag.ButtonTitle))
             {
-                nextButtonTitles.Add(flag.ButtonTitle);
+                if (!nextButtonTitles.Add(flag.ButtonTitle))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        foreach (var requiredStatus in requiredStatuses)
+        {
+            if (!TryFillSnapshotFlagCollections(requiredStatus.StatusFlag))
+            {
+                var statusName = string.IsNullOrWhiteSpace(requiredStatus.StatusFlag.Name) ? "(unnamed)" : requiredStatus.StatusFlag.Name;
+                validationError = $"Duplicate required status flag values for '{statusName}'.";
+                return false;
             }
         }
 
-        foreach (var requiredStatus in _requiredReviewStatuses)
-        {
-            FillSnapshotFlagCollections(requiredStatus.StatusFlag);
-        }
-
-        foreach (var reviewStatus in reviewStatuses)
+        foreach (var reviewStatus in customStatuses)
         {
             var flag = reviewStatus.StatusFlag;
 
-            var hasDuplicate =
-                (!string.IsNullOrEmpty(flag.Name) && nextNames.Contains(flag.Name)) ||
-                (!string.IsNullOrEmpty(flag.TwoCharCode) && nextCodes.Contains(flag.TwoCharCode)) ||
-                (!string.IsNullOrEmpty(flag.Hotkey) && nextHotkeys.Contains(flag.Hotkey)) ||
-                (!string.IsNullOrEmpty(flag.Suffix) && nextSuffixes.Contains(flag.Suffix)) ||
-                (!string.IsNullOrEmpty(flag.Prefix) && nextPrefixes.Contains(flag.Prefix)) ||
-                (!string.IsNullOrEmpty(flag.ButtonTitle) && nextButtonTitles.Contains(flag.ButtonTitle));
-
-            if (hasDuplicate)
+            if (!TryFillSnapshotFlagCollections(flag))
             {
                 var statusName = string.IsNullOrWhiteSpace(flag.Name) ? "(unnamed)" : flag.Name;
                 validationError = $"Duplicate custom status flag values for '{statusName}'.";
                 return false;
             }
-
-            FillSnapshotFlagCollections(flag);
         }
 
+        _requiredReviewStatuses = requiredStatuses.ToList();
+
         _customReviewStatuses.Clear();
-        foreach (var reviewStatus in reviewStatuses)
+        foreach (var reviewStatus in customStatuses)
         {
             _customReviewStatuses.Add(reviewStatus);
         }

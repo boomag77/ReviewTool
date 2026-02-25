@@ -107,6 +107,7 @@ public partial class MainWindow : Window
 
         DataContext = _viewModel;
         Loaded += (_, _) => Keyboard.Focus(this);
+        PreviewKeyDown += MainWindow_PreviewKeyDown;
         _originalFolderIndex = new CurrentFolderIndex(this);
         _processedFolderIndex = new CurrentFolderIndex(this);
 
@@ -799,7 +800,9 @@ public partial class MainWindow : Window
 
     private void AddEditCustomFlags_Click(object sender, RoutedEventArgs e)
     {
-        var editorWindow = new CustomFlagsEditorWindow(_viewModel.CustomReviewStatuses)
+        var editorWindow = new CustomFlagsEditorWindow(_viewModel.RequiredReviewStatuses,
+                                                       _viewModel.CustomReviewStatuses,
+                                                       _viewModel.MaxCustomStatuses)
         {
             Owner = this
         };
@@ -809,7 +812,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_viewModel.TryReplaceCustomReviewStatuses(editorWindow.ResultStatuses, out var validationError))
+        if (_viewModel.TryApplyReviewStatuses(editorWindow.ResultRequiredStatuses,
+                                              editorWindow.ResultCustomStatuses,
+                                              out var validationError))
         {
             return;
         }
@@ -819,6 +824,82 @@ public partial class MainWindow : Window
                         "Custom statuses",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
+    }
+
+    private async void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!TryResolveStatusByHotkey(e, out var reviewStatus))
+        {
+            return;
+        }
+
+        if (!TryGetCurrentSelectedFilePath(out var filePath))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await SetReviewStatusToCurrentImage(reviewStatus, filePath, null);
+    }
+
+    private bool TryResolveStatusByHotkey(KeyEventArgs e, out ReviewStatus reviewStatus)
+    {
+        reviewStatus = default;
+
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (!HotkeyHelper.TryBuildHotkeyString(key, Keyboard.Modifiers, out var normalizedPressedHotkey))
+        {
+            return false;
+        }
+
+        foreach (var status in _viewModel.RequiredReviewStatuses)
+        {
+            if (HasMatchingHotkey(status, normalizedPressedHotkey))
+            {
+                reviewStatus = status;
+                return true;
+            }
+        }
+
+        foreach (var status in _viewModel.CustomReviewStatuses)
+        {
+            if (HasMatchingHotkey(status, normalizedPressedHotkey))
+            {
+                reviewStatus = status;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryGetCurrentSelectedFilePath(out string filePath)
+    {
+        filePath = _viewModel.SelectedOriginalFile?.FilePath ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(filePath))
+        {
+            return true;
+        }
+
+        if (_originalFolderIndex.TryGetFilePathForIndex(_currentImageIndex, out var indexedFilePath)
+            && !string.IsNullOrWhiteSpace(indexedFilePath))
+        {
+            filePath = indexedFilePath;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasMatchingHotkey(ReviewStatus status, string normalizedPressedHotkey)
+    {
+        if (string.IsNullOrWhiteSpace(status.StatusFlag.Hotkey))
+        {
+            return false;
+        }
+
+        var normalizedStatusHotkey = HotkeyHelper.NormalizeHotkey(status.StatusFlag.Hotkey);
+        return string.Equals(normalizedStatusHotkey, normalizedPressedHotkey, StringComparison.OrdinalIgnoreCase);
     }
 
     private async void StatusBtton_Click(object sender, RoutedEventArgs e)
@@ -1167,11 +1248,11 @@ public partial class MainWindow : Window
 
     private async void FileNameTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter)
+        if (!TryResolveStatusByHotkey(e, out var reviewStatus))
         {
             return;
         }
-        TraceInput($"FileNameTextBox_PreviewKeyDown Enter idx={_currentImageIndex} focus={Keyboard.FocusedElement?.GetType().Name}");
+        TraceInput($"FileNameTextBox_PreviewKeyDown hotkey idx={_currentImageIndex} focus={Keyboard.FocusedElement?.GetType().Name}");
 
         e.Handled = true;
 
@@ -1189,7 +1270,7 @@ public partial class MainWindow : Window
         }
         _lastHandledIndex = _currentImageIndex;
 
-        SetReviewStatusForCurrentImage(GetAcceptedReviewStatus(), null);
+        SetReviewStatusForCurrentImage(reviewStatus, null);
         await NavigateImages(1);
     }
 

@@ -105,6 +105,43 @@
             <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}"/>
             <Setter Property="Background" Value="{StaticResource PipelineTextboxBackgroundBrush}"/>
         </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}"/>
+            <Setter Property="Background" Value="{StaticResource PipelineTextboxBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PipelineCardBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#2A3A52"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="EditorComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}"/>
+            <Setter Property="Background" Value="{StaticResource PipelineTextboxBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PipelineCardBorderBrush}"/>
+            <Setter Property="Padding" Value="3,1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+
+        <Style x:Key="EditorComboBoxItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}"/>
+            <Setter Property="Background" Value="{StaticResource PipelineTextboxBackgroundBrush}"/>
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#3A3F47"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#2A3A52"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Border Margin="12"
@@ -120,7 +157,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Custom Status Flags"
+        <TextBlock Text="Review Status Flags"
                    FontSize="16"
                    FontWeight="SemiBold"
                    Margin="0,0,0,10"/>
@@ -135,14 +172,55 @@
                   SelectionMode="Single"
                   SelectionUnit="FullRow">
             <DataGrid.Columns>
-                <DataGridComboBoxColumn Header="Type"
-                                        Width="110"
-                                        SelectedItemBinding="{Binding StatusType, UpdateSourceTrigger=PropertyChanged}"
-                                        ItemsSource="{Binding Source={x:Static local:CustomFlagsEditorWindow.AvailableStatusTypes}}" />
+                <DataGridCheckBoxColumn Header="Required"
+                                        Width="78"
+                                        IsReadOnly="True"
+                                        Binding="{Binding IsRequired}" />
+                <DataGridTemplateColumn Header="Type" Width="110">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding StatusType}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <ComboBox Style="{StaticResource EditorComboBoxStyle}"
+                                      ItemContainerStyle="{StaticResource EditorComboBoxItemStyle}"
+                                      SelectedItem="{Binding StatusType, UpdateSourceTrigger=PropertyChanged}"
+                                      ItemsSource="{Binding Source={x:Static local:CustomFlagsEditorWindow.AvailableSelectableStatusTypes}}">
+                                <ComboBox.Resources>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2A3A52"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#2A3A52"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#1E2024"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="#1E2024"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.MenuBrushKey}" Color="#1E2024"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#1E2024"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#E5E7EA"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="#E5E7EA"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFF"/>
+                                </ComboBox.Resources>
+                            </ComboBox>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Name" Width="130" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
                 <DataGridTextColumn Header="ButtonTitle" Width="130" Binding="{Binding ButtonTitle, UpdateSourceTrigger=PropertyChanged}" />
                 <DataGridTextColumn Header="TwoCharCode" Width="110" Binding="{Binding TwoCharCode, UpdateSourceTrigger=PropertyChanged}" />
-                <DataGridTextColumn Header="Hotkey" Width="100" Binding="{Binding Hotkey, UpdateSourceTrigger=PropertyChanged}" />
+                <DataGridTemplateColumn Header="Hotkey" Width="120">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Hotkey}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding Hotkey, UpdateSourceTrigger=PropertyChanged}"
+                                     PreviewKeyDown="HotkeyEditor_PreviewKeyDown"
+                                     ToolTip="Press key or Ctrl/Shift+key" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Suffix" Width="110" Binding="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}" />
                 <DataGridTextColumn Header="Prefix" Width="130" Binding="{Binding Prefix, UpdateSourceTrigger=PropertyChanged}" />
                 <DataGridTextColumn Header="Description" Width="*" Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}" />

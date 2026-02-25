@@ -1,34 +1,58 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace ReviewTool;
 
 public partial class CustomFlagsEditorWindow : Window
 {
-    public static IReadOnlyList<ReviewStatusType> AvailableStatusTypes { get; } = new[]
+    public static IReadOnlyList<ReviewStatusType> AvailableSelectableStatusTypes { get; } = new[]
     {
         ReviewStatusType.Accepted,
         ReviewStatusType.Rejected
     };
 
     public ObservableCollection<CustomFlagRow> Rows { get; } = new();
-    public IReadOnlyList<ReviewStatus> ResultStatuses => _resultStatuses;
+    public IReadOnlyList<ReviewStatus> ResultRequiredStatuses => _resultRequiredStatuses;
+    public IReadOnlyList<ReviewStatus> ResultCustomStatuses => _resultCustomStatuses;
 
-    private readonly List<ReviewStatus> _resultStatuses = new();
+    private readonly List<ReviewStatus> _resultRequiredStatuses = new();
+    private readonly List<ReviewStatus> _resultCustomStatuses = new();
+    private readonly int _maxCustomStatusesCount;
 
-    public CustomFlagsEditorWindow(IEnumerable<ReviewStatus> currentStatuses)
+    public CustomFlagsEditorWindow(IEnumerable<ReviewStatus> requiredStatuses,
+                                   IEnumerable<ReviewStatus> customStatuses,
+                                   int maxCustomStatusesCount)
     {
         InitializeComponent();
         DataContext = this;
+        _maxCustomStatusesCount = maxCustomStatusesCount;
 
-        foreach (var status in currentStatuses)
+        foreach (var status in requiredStatuses)
         {
-            Rows.Add(CustomFlagRow.FromReviewStatus(status));
+            Rows.Add(CustomFlagRow.FromReviewStatus(status, isRequired: true));
+        }
+
+        foreach (var status in customStatuses)
+        {
+            Rows.Add(CustomFlagRow.FromReviewStatus(status, isRequired: false));
         }
     }
 
     private void AddRow_Click(object sender, RoutedEventArgs e)
     {
+        var currentCustomCount = Rows.Count(row => !row.IsRequired);
+        if (currentCustomCount >= _maxCustomStatusesCount)
+        {
+            MessageBox.Show(this,
+                            $"Custom statuses limit is {_maxCustomStatusesCount}.",
+                            "Custom status",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+            return;
+        }
+
         var newRow = new CustomFlagRow();
         Rows.Add(newRow);
         FlagsDataGrid.SelectedItem = newRow;
@@ -41,14 +65,36 @@ public partial class CustomFlagsEditorWindow : Window
             return;
         }
 
+        if (selectedRow.IsRequired)
+        {
+            MessageBox.Show(this,
+                            "Required flags cannot be removed.",
+                            "Custom status",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+            return;
+        }
+
         Rows.Remove(selectedRow);
     }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
-        var nextStatuses = new List<ReviewStatus>(Rows.Count);
+        var nextRequiredStatuses = new List<ReviewStatus>(Rows.Count);
+        var nextCustomStatuses = new List<ReviewStatus>(Rows.Count);
+
         foreach (var row in Rows)
         {
+            if (row.IsRequired && row.IsEmpty())
+            {
+                MessageBox.Show(this,
+                                "Required flag rows cannot be empty.",
+                                "Custom status",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Warning);
+                return;
+            }
+
             if (row.IsEmpty())
             {
                 continue;
@@ -64,11 +110,30 @@ public partial class CustomFlagsEditorWindow : Window
                 return;
             }
 
-            nextStatuses.Add(reviewStatus);
+            if (row.IsRequired)
+            {
+                nextRequiredStatuses.Add(reviewStatus);
+            }
+            else
+            {
+                nextCustomStatuses.Add(reviewStatus);
+            }
         }
 
-        _resultStatuses.Clear();
-        _resultStatuses.AddRange(nextStatuses);
+        if (nextCustomStatuses.Count > _maxCustomStatusesCount)
+        {
+            MessageBox.Show(this,
+                            $"Custom statuses limit is {_maxCustomStatusesCount}.",
+                            "Custom status",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+            return;
+        }
+
+        _resultRequiredStatuses.Clear();
+        _resultCustomStatuses.Clear();
+        _resultRequiredStatuses.AddRange(nextRequiredStatuses);
+        _resultCustomStatuses.AddRange(nextCustomStatuses);
         DialogResult = true;
     }
 
@@ -77,8 +142,48 @@ public partial class CustomFlagsEditorWindow : Window
         DialogResult = false;
     }
 
+    private void HotkeyEditor_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox textBox || textBox.DataContext is not CustomFlagRow row)
+        {
+            return;
+        }
+
+        var normalizedHotkey = BuildHotkeyStringFrom(e);
+        if (normalizedHotkey is null)
+        {
+            return;
+        }
+
+        row.Hotkey = normalizedHotkey;
+        textBox.Text = normalizedHotkey;
+        e.Handled = true;
+    }
+
+    private static string? BuildHotkeyStringFrom(KeyEventArgs e)
+    {
+        if (e.Key == Key.Tab)
+        {
+            return null;
+        }
+
+        if (e.Key == Key.Back || e.Key == Key.Delete)
+        {
+            return string.Empty;
+        }
+
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (!HotkeyHelper.TryBuildHotkeyString(key, Keyboard.Modifiers, out var hotkey))
+        {
+            return null;
+        }
+
+        return hotkey;
+    }
+
     public sealed class CustomFlagRow
     {
+        public bool IsRequired { get; set; }
         public ReviewStatusType StatusType { get; set; } = ReviewStatusType.Rejected;
         public string Name { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
@@ -88,10 +193,11 @@ public partial class CustomFlagsEditorWindow : Window
         public string Prefix { get; set; } = string.Empty;
         public string Hotkey { get; set; } = string.Empty;
 
-        public static CustomFlagRow FromReviewStatus(ReviewStatus reviewStatus)
+        public static CustomFlagRow FromReviewStatus(ReviewStatus reviewStatus, bool isRequired)
         {
             return new CustomFlagRow
             {
+                IsRequired = isRequired,
                 StatusType = reviewStatus.StatusType,
                 Name = reviewStatus.StatusFlag.Name ?? string.Empty,
                 Description = reviewStatus.StatusFlag.Description ?? string.Empty,
@@ -118,6 +224,7 @@ public partial class CustomFlagsEditorWindow : Window
         {
             var normalizedName = Name.Trim();
             var normalizedButtonTitle = ButtonTitle.Trim();
+            var normalizedHotkey = HotkeyHelper.NormalizeHotkey(Hotkey);
 
             if (string.IsNullOrWhiteSpace(normalizedName))
             {
@@ -126,10 +233,18 @@ public partial class CustomFlagsEditorWindow : Window
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(normalizedButtonTitle))
+            if (!IsRequired && StatusType == ReviewStatusType.Pending)
             {
                 reviewStatus = default;
-                validationError = $"ButtonTitle is required for '{normalizedName}'.";
+                validationError = "Pending is technical and cannot be selected for custom UI flags.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedButtonTitle)
+                && string.IsNullOrWhiteSpace(normalizedHotkey))
+            {
+                reviewStatus = default;
+                validationError = $"Hotkey is required when ButtonTitle is set for '{normalizedName}'.";
                 return false;
             }
 
@@ -140,9 +255,9 @@ public partial class CustomFlagsEditorWindow : Window
                 {
                     Name = normalizedName,
                     Description = NormalizeOptional(Description),
-                    ButtonTitle = normalizedButtonTitle,
+                    ButtonTitle = NormalizeOptional(normalizedButtonTitle),
                     TwoCharCode = NormalizeOptional(TwoCharCode),
-                    Hotkey = NormalizeOptional(Hotkey),
+                    Hotkey = NormalizeOptional(normalizedHotkey),
                     Suffix = NormalizeOptional(Suffix),
                     Prefix = NormalizeOptional(Prefix)
                 }
