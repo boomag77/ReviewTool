@@ -72,26 +72,6 @@ internal sealed class InitialReviewProcessor
         };
     }
 
-    public ReviewStatus GetBadOriginalReviewStatus()
-    {
-        if (_viewModel.TryGetReviewStatusByFlagName(BadOriginalFlagName, out var reviewStatus))
-        {
-            return reviewStatus;
-        }
-
-        return new ReviewStatus
-        {
-            StatusType = ReviewStatusType.Rejected,
-            StatusFlag = new ReviewStatusFlag
-            {
-                Name = BadOriginalFlagName,
-                ButtonTitle = "Bad original",
-                TwoCharCode = "BO",
-                Hotkey = "B",
-                Suffix = "bo"
-            }
-        };
-    }
 
     public void ApplyReviewStatus(ImageFileItem item, ReviewStatus status, string? newName)
     {
