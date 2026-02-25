@@ -142,6 +142,30 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <Style x:Key="AffixDisplayTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsAffixRequiredViolation}" Value="True">
+                    <Setter Property="Background" Value="#5A2B2B"/>
+                    <Setter Property="Foreground" Value="#FFD5D5"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="AffixEditorTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}"/>
+            <Setter Property="Background" Value="{StaticResource PipelineTextboxBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PipelineCardBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsAffixRequiredViolation}" Value="True">
+                    <Setter Property="Background" Value="#5A2B2B"/>
+                    <Setter Property="BorderBrush" Value="#CF5A5A"/>
+                    <Setter Property="Foreground" Value="#FFD5D5"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Border Margin="12"
@@ -221,8 +245,12 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellEditingTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Suffix" Width="110" Binding="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}" />
-                <DataGridTextColumn Header="Prefix" Width="130" Binding="{Binding Prefix, UpdateSourceTrigger=PropertyChanged}" />
+                <DataGridTextColumn Header="Suffix" Width="110" Binding="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}"
+                                    ElementStyle="{StaticResource AffixDisplayTextStyle}"
+                                    EditingElementStyle="{StaticResource AffixEditorTextBoxStyle}" />
+                <DataGridTextColumn Header="Prefix" Width="130" Binding="{Binding Prefix, UpdateSourceTrigger=PropertyChanged}"
+                                    ElementStyle="{StaticResource AffixDisplayTextStyle}"
+                                    EditingElementStyle="{StaticResource AffixEditorTextBoxStyle}" />
                 <DataGridTextColumn Header="Description" Width="*" Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}" />
             </DataGrid.Columns>
         </DataGrid>
@@ -234,7 +262,7 @@
             </StackPanel>
 
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <Button Style="{StaticResource DialogPrimaryButton}" Content="OK" Width="90" IsDefault="True" Click="Ok_Click" />
+                <Button Style="{StaticResource DialogPrimaryButton}" Content="OK" Width="90" IsDefault="True" IsEnabled="{Binding CanSubmit}" Click="Ok_Click" />
                 <Button Style="{StaticResource DialogActionButton}" Content="Cancel" Width="90" IsCancel="True" Margin="0" Click="Cancel_Click" />
             </StackPanel>
         </DockPanel>

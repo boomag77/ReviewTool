@@ -329,6 +329,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
         foreach (var requiredStatus in requiredStatuses)
         {
+            if (!HasRequiredAffix(requiredStatus, isRequired: true))
+            {
+                var statusName = string.IsNullOrWhiteSpace(requiredStatus.StatusFlag.Name) ? "(unnamed)" : requiredStatus.StatusFlag.Name;
+                validationError = $"Flag '{statusName}' must have Prefix or Suffix. Only required Accepted flag may have neither.";
+                return false;
+            }
+
             if (!TryFillSnapshotFlagCollections(requiredStatus.StatusFlag))
             {
                 var statusName = string.IsNullOrWhiteSpace(requiredStatus.StatusFlag.Name) ? "(unnamed)" : requiredStatus.StatusFlag.Name;
@@ -340,6 +347,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         foreach (var reviewStatus in customStatuses)
         {
             var flag = reviewStatus.StatusFlag;
+
+            if (!HasRequiredAffix(reviewStatus, isRequired: false))
+            {
+                var statusName = string.IsNullOrWhiteSpace(flag.Name) ? "(unnamed)" : flag.Name;
+                validationError = $"Flag '{statusName}' must have Prefix or Suffix. Only required Accepted flag may have neither.";
+                return false;
+            }
 
             if (!TryFillSnapshotFlagCollections(flag))
             {
@@ -368,6 +382,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CustomReviewStatuses)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusButtons)));
         return true;
+    }
+
+    private static bool HasRequiredAffix(ReviewStatus reviewStatus, bool isRequired)
+    {
+        if (isRequired && reviewStatus.StatusType == ReviewStatusType.Accepted)
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(reviewStatus.StatusFlag.Suffix)
+               || !string.IsNullOrWhiteSpace(reviewStatus.StatusFlag.Prefix);
     }
 
     public bool TryGetRequiredReviewStatus(ReviewStatusType statusType, out ReviewStatus reviewStatus)

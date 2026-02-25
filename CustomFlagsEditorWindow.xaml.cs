@@ -1,11 +1,14 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
 namespace ReviewTool;
 
-public partial class CustomFlagsEditorWindow : Window
+public partial class CustomFlagsEditorWindow : Window, INotifyPropertyChanged
 {
     public static IReadOnlyList<ReviewStatusType> AvailableSelectableStatusTypes { get; } = new[]
     {
@@ -20,6 +23,15 @@ public partial class CustomFlagsEditorWindow : Window
     private readonly List<ReviewStatus> _resultRequiredStatuses = new();
     private readonly List<ReviewStatus> _resultCustomStatuses = new();
     private readonly int _maxCustomStatusesCount;
+    private bool _canSubmit = true;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public bool CanSubmit
+    {
+        get => _canSubmit;
+        private set => SetField(ref _canSubmit, value);
+    }
 
     public CustomFlagsEditorWindow(IEnumerable<ReviewStatus> requiredStatuses,
                                    IEnumerable<ReviewStatus> customStatuses,
@@ -28,6 +40,7 @@ public partial class CustomFlagsEditorWindow : Window
         InitializeComponent();
         DataContext = this;
         _maxCustomStatusesCount = maxCustomStatusesCount;
+        Rows.CollectionChanged += Rows_CollectionChanged;
 
         foreach (var status in requiredStatuses)
         {
@@ -38,6 +51,13 @@ public partial class CustomFlagsEditorWindow : Window
         {
             Rows.Add(CustomFlagRow.FromReviewStatus(status, isRequired: false));
         }
+
+        foreach (var row in Rows)
+        {
+            row.PropertyChanged += Row_PropertyChanged;
+        }
+
+        UpdateValidationState();
     }
 
     private void AddRow_Click(object sender, RoutedEventArgs e)
@@ -56,6 +76,7 @@ public partial class CustomFlagsEditorWindow : Window
         var newRow = new CustomFlagRow();
         Rows.Add(newRow);
         FlagsDataGrid.SelectedItem = newRow;
+        UpdateValidationState();
     }
 
     private void RemoveRow_Click(object sender, RoutedEventArgs e)
@@ -76,6 +97,7 @@ public partial class CustomFlagsEditorWindow : Window
         }
 
         Rows.Remove(selectedRow);
+        UpdateValidationState();
     }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
@@ -142,6 +164,50 @@ public partial class CustomFlagsEditorWindow : Window
         DialogResult = false;
     }
 
+    private void Rows_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+        {
+            foreach (var oldItem in e.OldItems)
+            {
+                if (oldItem is CustomFlagRow oldRow)
+                {
+                    oldRow.PropertyChanged -= Row_PropertyChanged;
+                }
+            }
+        }
+
+        if (e.NewItems is not null)
+        {
+            foreach (var newItem in e.NewItems)
+            {
+                if (newItem is CustomFlagRow newRow)
+                {
+                    newRow.PropertyChanged += Row_PropertyChanged;
+                }
+            }
+        }
+
+        UpdateValidationState();
+    }
+
+    private void Row_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CustomFlagRow.IsAffixRequiredViolation)
+            || e.PropertyName == nameof(CustomFlagRow.Prefix)
+            || e.PropertyName == nameof(CustomFlagRow.Suffix)
+            || e.PropertyName == nameof(CustomFlagRow.Name)
+            || e.PropertyName == nameof(CustomFlagRow.StatusType))
+        {
+            UpdateValidationState();
+        }
+    }
+
+    private void UpdateValidationState()
+    {
+        CanSubmit = Rows.All(row => !row.IsAffixRequiredViolation);
+    }
+
     private void HotkeyEditor_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (sender is not TextBox textBox || textBox.DataContext is not CustomFlagRow row)
@@ -181,17 +247,88 @@ public partial class CustomFlagsEditorWindow : Window
         return hotkey;
     }
 
-    public sealed class CustomFlagRow
+    public sealed class CustomFlagRow : INotifyPropertyChanged
     {
-        public bool IsRequired { get; set; }
-        public ReviewStatusType StatusType { get; set; } = ReviewStatusType.Rejected;
-        public string Name { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public string ButtonTitle { get; set; } = string.Empty;
-        public string TwoCharCode { get; set; } = string.Empty;
-        public string Suffix { get; set; } = string.Empty;
-        public string Prefix { get; set; } = string.Empty;
-        public string Hotkey { get; set; } = string.Empty;
+        private bool _isRequired;
+        private ReviewStatusType _statusType = ReviewStatusType.Rejected;
+        private string _name = string.Empty;
+        private string _description = string.Empty;
+        private string _buttonTitle = string.Empty;
+        private string _twoCharCode = string.Empty;
+        private string _suffix = string.Empty;
+        private string _prefix = string.Empty;
+        private string _hotkey = string.Empty;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public bool IsRequired
+        {
+            get => _isRequired;
+            set => SetField(ref _isRequired, value);
+        }
+
+        public ReviewStatusType StatusType
+        {
+            get => _statusType;
+            set => SetField(ref _statusType, value);
+        }
+
+        public string Name
+        {
+            get => _name;
+            set => SetField(ref _name, value);
+        }
+
+        public string Description
+        {
+            get => _description;
+            set => SetField(ref _description, value);
+        }
+
+        public string ButtonTitle
+        {
+            get => _buttonTitle;
+            set => SetField(ref _buttonTitle, value);
+        }
+
+        public string TwoCharCode
+        {
+            get => _twoCharCode;
+            set => SetField(ref _twoCharCode, value);
+        }
+
+        public string Suffix
+        {
+            get => _suffix;
+            set => SetField(ref _suffix, value);
+        }
+
+        public string Prefix
+        {
+            get => _prefix;
+            set => SetField(ref _prefix, value);
+        }
+
+        public string Hotkey
+        {
+            get => _hotkey;
+            set => SetField(ref _hotkey, value);
+        }
+
+        public bool IsAffixRequiredViolation
+        {
+            get
+            {
+                if (IsEmpty())
+                {
+                    return false;
+                }
+
+                var hasAffix = !string.IsNullOrWhiteSpace(Suffix) || !string.IsNullOrWhiteSpace(Prefix);
+                var isRequiredAccepted = IsRequired && StatusType == ReviewStatusType.Accepted;
+                return !hasAffix && !isRequiredAccepted;
+            }
+        }
 
         public static CustomFlagRow FromReviewStatus(ReviewStatus reviewStatus, bool isRequired)
         {
@@ -225,6 +362,8 @@ public partial class CustomFlagsEditorWindow : Window
             var normalizedName = Name.Trim();
             var normalizedButtonTitle = ButtonTitle.Trim();
             var normalizedHotkey = HotkeyHelper.NormalizeHotkey(Hotkey);
+            var normalizedSuffix = NormalizeOptional(Suffix);
+            var normalizedPrefix = NormalizeOptional(Prefix);
 
             if (string.IsNullOrWhiteSpace(normalizedName))
             {
@@ -248,6 +387,16 @@ public partial class CustomFlagsEditorWindow : Window
                 return false;
             }
 
+            var hasAffix = !string.IsNullOrWhiteSpace(normalizedSuffix)
+                           || !string.IsNullOrWhiteSpace(normalizedPrefix);
+            var isRequiredAcceptedFlag = IsRequired && StatusType == ReviewStatusType.Accepted;
+            if (!hasAffix && !isRequiredAcceptedFlag)
+            {
+                reviewStatus = default;
+                validationError = $"Flag '{normalizedName}' must have Prefix or Suffix. Only required Accepted flag may have neither.";
+                return false;
+            }
+
             reviewStatus = new ReviewStatus
             {
                 StatusType = StatusType,
@@ -258,8 +407,8 @@ public partial class CustomFlagsEditorWindow : Window
                     ButtonTitle = NormalizeOptional(normalizedButtonTitle),
                     TwoCharCode = NormalizeOptional(TwoCharCode),
                     Hotkey = NormalizeOptional(normalizedHotkey),
-                    Suffix = NormalizeOptional(Suffix),
-                    Prefix = NormalizeOptional(Prefix)
+                    Suffix = normalizedSuffix,
+                    Prefix = normalizedPrefix
                 }
             };
 
@@ -272,5 +421,28 @@ public partial class CustomFlagsEditorWindow : Window
             var normalized = value.Trim();
             return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
         }
+
+        private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+            {
+                return;
+            }
+
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsAffixRequiredViolation)));
+        }
+    }
+
+    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
