@@ -476,23 +476,22 @@
                             </TextBlock.LayoutTransform>
                         </TextBlock>
                     </Expander.Header>
-                    <Grid Grid.IsSharedSizeScope="True" Margin="0,6,0,0" HorizontalAlignment="Left"
-                          VerticalAlignment="Center">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition SharedSizeGroup="ActionButtons" Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Button Grid.Row="0" Grid.Column="0" Style="{StaticResource ActionCompactButton}" Content="Bad original"
-                                Click="BadOriginal_Click" />
-                        <Button Grid.Row="1" Grid.Column="0" Style="{StaticResource ActionCompactButton}" Content="Rescan"
-                                Click="Rescan_Click" />
-                        <Button Grid.Row="2" Grid.Column="0" Style="{StaticResource ActionCompactButton}" Content="OK"
-                                Margin="0,0,8,0" Click="OkReview_Click" />
-                    </Grid>
+                    <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding StatusButtons}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource ActionCompactButton}"
+                                        Content="{Binding StatusFlag.ButtonTitle}"
+                                        Tag="{Binding}"
+                                        Margin="0,0,8,8"
+                                        Click="StatusBtton_Click" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </Expander>
             </Border>
         </Grid>

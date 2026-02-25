@@ -41,6 +41,18 @@ public partial class MainWindow : Window
         public int MaxPageNumber;
     }
 
+    private readonly struct StatusButtonContext
+    {
+        public StatusButtonContext(ReviewStatus reviewStatus, string filePath)
+        {
+            ReviewStatus = reviewStatus;
+            FilePath = filePath;
+        }
+
+        public ReviewStatus ReviewStatus { get; }
+        public string FilePath { get; }
+    }
+
     private const int MaxCustomStatusCount = 5;
 
     public static readonly RoutedCommand NextImageCommand = new();
@@ -723,9 +735,9 @@ public partial class MainWindow : Window
             }
             if (_isInitialReview)
             {
-                SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Accepted,
-                                               ImageFileItem.RejectReasonType.None,
-                                               null);
+                //SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Accepted,
+                     //                          ImageFileItem.RejectReasonType.None,
+                   //                            null);
                 await NavigateImages(1);
                 return;
             }
@@ -749,9 +761,9 @@ public partial class MainWindow : Window
             if (_isInitialReview)
             {
                 //await SaveInitialReviewRejectedAsync("_bo");
-                SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Rejected,
-                                               ImageFileItem.RejectReasonType.BadOriginal,
-                                               null);
+                //SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Rejected,
+                //                               ImageFileItem.RejectReasonType.BadOriginal,
+                //                               null);
 
                 await NavigateImages(1);
                 return;
@@ -776,9 +788,9 @@ public partial class MainWindow : Window
             if (_isInitialReview)
             {
                 //await SaveInitialReviewRejectedAsync("_rs");
-                SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Rejected,
-                                               ImageFileItem.RejectReasonType.Rescan,
-                                               null);
+                //SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Rejected,
+                                               //ImageFileItem.RejectReasonType.Rescan,
+                                               //null);
 
                 await NavigateImages(1);
                 return;
@@ -790,6 +802,85 @@ public partial class MainWindow : Window
         {
             Debug.WriteLine($"Error handling rescan: {ex}");
         }
+    }
+
+    private async void StatusBtton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement button)
+        {
+            return;
+        }
+
+        if (!TryBuildStatusButtonContext(button, out var statusButtonContext))
+        {
+            return;
+        }
+
+        await SetReviewStatusToCurrentImage(statusButtonContext.ReviewStatus, statusButtonContext.FilePath, null);
+    }
+
+    private bool TryBuildStatusButtonContext(FrameworkElement button, out StatusButtonContext statusButtonContext)
+    {
+        statusButtonContext = default;
+
+        var reviewStatus = button.DataContext is ReviewStatus boundStatus
+            ? boundStatus
+            : button.Tag is ReviewStatus taggedStatus
+                ? taggedStatus
+                : (ReviewStatus?)null;
+
+        if (reviewStatus is null)
+        {
+            return false;
+        }
+
+        var filePath = _viewModel.SelectedOriginalFile?.FilePath;
+        if (string.IsNullOrWhiteSpace(filePath) &&
+            _originalFolderIndex.TryGetFilePathForIndex(_currentImageIndex, out var indexedFilePath))
+        {
+            filePath = indexedFilePath;
+        }
+
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return false;
+        }
+
+        statusButtonContext = new StatusButtonContext(reviewStatus.Value, filePath);
+        return true;
+    }
+
+    private async Task SetReviewStatusToCurrentImage(ReviewStatus status, string filePath, string? newName)
+    {
+        if (_transitionInProgress)
+        {
+            return;
+        }
+
+        if (_isInitialReview)
+        {
+            if (!string.IsNullOrWhiteSpace(filePath))
+            {
+                var selectedItem = _viewModel.OriginalFiles.FirstOrDefault(candidate =>
+                    string.Equals(candidate.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+                if (selectedItem is not null)
+                {
+                    _viewModel.SelectedOriginalFile = selectedItem;
+                }
+            }
+
+            SetReviewStatusForCurrentImage(status, newName);
+            await NavigateImages(1);
+            return;
+        }
+
+        if (status.StatusType == ReviewStatusType.Accepted)
+        {
+            await HandleOkAsync();
+            return;
+        }
+
+        Debug.WriteLine($"{status.StatusFlag.ButtonTitle ?? status.StatusFlag.Name ?? status.StatusType.ToString()} clicked.");
     }
 
     private async void PerformMapping_Click(object sender, RoutedEventArgs e)
@@ -1067,9 +1158,9 @@ public partial class MainWindow : Window
         }
         _lastHandledIndex = _currentImageIndex;
 
-        SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Accepted,
-                                       ImageFileItem.RejectReasonType.None,
-                                       null);
+        //SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Accepted,
+        //                               ImageFileItem.RejectReasonType.None,
+        //                               null);
         await NavigateImages(1);
     }
 
@@ -1129,8 +1220,8 @@ public partial class MainWindow : Window
             foreach (var item in _viewModel.OriginalFiles)
             {
                 item.NewFileName = string.Empty;
-                item.RejectReason = ImageFileItem.RejectReasonType.None;
-                item.ReviewStatus = ImageFileItem.ReviewStatusType.Pending;
+                //item.RejectReason = ImageFileItem.RejectReasonType.None;
+                //item.ReviewStatus = ImageFileItem.ReviewStatusType.Pending;
             }
         }
         finally
@@ -1500,7 +1591,7 @@ public partial class MainWindow : Window
         //await UpdatePreviewImagesAsync();
     }
 
-    private void SetReviewStatusForCurrentImage(ReviewStatus status,,
+    private void SetReviewStatusForCurrentImage(ReviewStatus status,
                                                 string? newName)
     {
         if (!_isInitialReview)
@@ -1524,8 +1615,8 @@ public partial class MainWindow : Window
             item.NewFileName = newName;
         }
 
-        item.ReviewStatus = status;
-        item.RejectReason = rejectReason;
+        //item.ReviewStatus = status;
+        //item.RejectReason = rejectReason;
     }
 
     private static bool TryGetNumericPrefix(ReadOnlySpan<char> s, out int value, out int prefixLen)
@@ -1604,56 +1695,56 @@ public partial class MainWindow : Window
                     pagesWithPageNumbers.Add(pageNumber);
                     maxPageNumber = Math.Max(maxPageNumber, pageNumber);
                 }
-                switch (item.ReviewStatus)
-                {
-                    case ImageFileItem.ReviewStatusType.Pending:
+                //switch (item.ReviewStatus)
+                //{
+                //    case ImageFileItem.ReviewStatusType.Pending:
 
-                        ReadOnlySpan<char> originalFileName = Path.GetFileNameWithoutExtension(item.FilePath.AsSpan());
-                        //var notReviewedFileName = string.Concat("_nr_", originalFileName);
-                        notReviewedPages.Add(originalFileName.ToString());
-                        break;
+                //        ReadOnlySpan<char> originalFileName = Path.GetFileNameWithoutExtension(item.FilePath.AsSpan());
+                //        //var notReviewedFileName = string.Concat("_nr_", originalFileName);
+                //        notReviewedPages.Add(originalFileName.ToString());
+                //        break;
 
-                    case ImageFileItem.ReviewStatusType.Accepted:
-                        approvedPages.Add(newFileName);
-                        break;
+                //    case ImageFileItem.ReviewStatusType.Accepted:
+                //        approvedPages.Add(newFileName);
+                //        break;
 
-                    case ImageFileItem.ReviewStatusType.Rejected:
-                        if (item.RejectReason == ImageFileItem.RejectReasonType.BadOriginal)
-                        {
-                            badOriginalPages.Add(newFileName);
-                        }
-                        else if (item.RejectReason == ImageFileItem.RejectReasonType.Rescan)
-                        {
-                            rescanPages.Add(newFileName);
-                        }
-                        break;
-                }
+                //    case ImageFileItem.ReviewStatusType.Rejected:
+                //        if (item.RejectReason == ImageFileItem.RejectReasonType.BadOriginal)
+                //        {
+                //            badOriginalPages.Add(newFileName);
+                //        }
+                //        else if (item.RejectReason == ImageFileItem.RejectReasonType.Rescan)
+                //        {
+                //            rescanPages.Add(newFileName);
+                //        }
+                //        break;
+                //}
 
-                string statusStr = item.ReviewStatus switch
-                {
-                    ImageFileItem.ReviewStatusType.Pending => "Pending",
-                    ImageFileItem.ReviewStatusType.Accepted => "Approved",
-                    ImageFileItem.ReviewStatusType.Rejected => "Rejected",
-                    _ => "Pending"
-                };
+                //string statusStr = item.ReviewStatus switch
+                //{
+                //    ImageFileItem.ReviewStatusType.Pending => "Pending",
+                //    ImageFileItem.ReviewStatusType.Accepted => "Approved",
+                //    ImageFileItem.ReviewStatusType.Rejected => "Rejected",
+                //    _ => "Pending"
+                //};
 
-                string rejectStr = item.RejectReason switch
-                {
-                    ImageFileItem.RejectReasonType.BadOriginal => "BadOriginal",
-                    ImageFileItem.RejectReasonType.Rescan => "Rescan",
-                    _ => "None"
-                };
+                //string rejectStr = item.RejectReason switch
+                //{
+                //    ImageFileItem.RejectReasonType.BadOriginal => "BadOriginal",
+                //    ImageFileItem.RejectReasonType.Rescan => "Rescan",
+                //    _ => "None"
+                //};
 
-                ImageFileMappingInfo itemMappingInfo = new ImageFileMappingInfo
-                {
-                    OriginalName = Path.GetFileNameWithoutExtension(item.FileName),
-                    NewName = Path.GetFileNameWithoutExtension(newFileName),
-                    ReviewStatus = statusStr,
-                    RejectReason = rejectStr,
-                    ReviewDate = date,
-                    ReviewerName = _currentReviewerName
-                };
-                folderMappingInfo.Add(itemMappingInfo);
+                //ImageFileMappingInfo itemMappingInfo = new ImageFileMappingInfo
+                //{
+                //    OriginalName = Path.GetFileNameWithoutExtension(item.FileName),
+                //    NewName = Path.GetFileNameWithoutExtension(newFileName),
+                //    ReviewStatus = statusStr,
+                //    RejectReason = rejectStr,
+                //    ReviewDate = date,
+                //    ReviewerName = _currentReviewerName
+                //};
+                //folderMappingInfo.Add(itemMappingInfo);
             }
         });
         for (int i = 1; i <= maxPageNumber; i++)
@@ -1915,15 +2006,15 @@ public partial class MainWindow : Window
                     }
 
 
-                    if (!Enum.TryParse(item.ReviewStatus, true, out ImageFileItem.ReviewStatusType status))
-                    {
-                        status = ImageFileItem.ReviewStatusType.Pending;
-                    }
+                    //if (!Enum.TryParse(item.ReviewStatus, true, out ImageFileItem.ReviewStatusType status))
+                    //{
+                    //    status = ImageFileItem.ReviewStatusType.Pending;
+                    //}
 
-                    if (!Enum.TryParse(item.RejectReason, true, out ImageFileItem.RejectReasonType rejectReason))
-                    {
-                        rejectReason = ImageFileItem.RejectReasonType.None;
-                    }
+                    //if (!Enum.TryParse(item.RejectReason, true, out ImageFileItem.RejectReasonType rejectReason))
+                    //{
+                    //    rejectReason = ImageFileItem.RejectReasonType.None;
+                    //}
 
                     if (TryGetNumericPrefix(item.NewName.AsSpan(), out var pageNumber, out _)
                         && pageNumber > 0)
@@ -1933,48 +2024,48 @@ public partial class MainWindow : Window
                     }
 
                     ReadOnlySpan<char> sourceExt = Path.GetExtension(origFilePath.AsSpan());
-                    switch (status)
-                    {
-                        case ImageFileItem.ReviewStatusType.Pending:
-                            ReadOnlySpan<char> originalBase = item.NewName.AsSpan();
-                            ReadOnlySpan<char> prefix = "_not_reviewed_";
-                            string notReviewedFileName = string.Concat(prefix, originalBase, sourceExt);
-                            _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, notReviewedFileName);
-                            issueReport.Append(bookName);
-                            issueReport.Append('\t');
-                            issueReport.Append(item.NewName.AsSpan());
-                            issueReport.Append('\t');
-                            issueReport.AppendLine("Not Reviewed");
-                            break;
+                    //switch (status)
+                    //{
+                    //    case ImageFileItem.ReviewStatusType.Pending:
+                    //        ReadOnlySpan<char> originalBase = item.NewName.AsSpan();
+                    //        ReadOnlySpan<char> prefix = "_not_reviewed_";
+                    //        string notReviewedFileName = string.Concat(prefix, originalBase, sourceExt);
+                    //        _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, notReviewedFileName);
+                    //        issueReport.Append(bookName);
+                    //        issueReport.Append('\t');
+                    //        issueReport.Append(item.NewName.AsSpan());
+                    //        issueReport.Append('\t');
+                    //        issueReport.AppendLine("Not Reviewed");
+                    //        break;
 
-                        case ImageFileItem.ReviewStatusType.Accepted:
-                            string approvedFileName = string.Concat(item.NewName.AsSpan(), sourceExt);
-                            _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, approvedFileName);
-                            approvedCount++;
-                            break;
+                    //    case ImageFileItem.ReviewStatusType.Accepted:
+                    //        string approvedFileName = string.Concat(item.NewName.AsSpan(), sourceExt);
+                    //        _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, approvedFileName);
+                    //        approvedCount++;
+                    //        break;
 
-                        case ImageFileItem.ReviewStatusType.Rejected:
-                            rejectedCount++;
-                            ReadOnlySpan<char> suffix = rejectReason switch
-                            {
-                                ImageFileItem.RejectReasonType.BadOriginal => "_bo",
-                                ImageFileItem.RejectReasonType.Rescan => "_rs",
-                                _ => "_rejected",
-                            };
-                            string suffixed = string.Concat(item.NewName.AsSpan(), suffix, sourceExt);
-                            _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, suffixed);
-                            issueReport.Append(bookName);
-                            issueReport.Append('\t');
-                            issueReport.Append(item.NewName.AsSpan());
-                            issueReport.Append('\t');
-                            issueReport.AppendLine(rejectReason switch
-                            {
-                                ImageFileItem.RejectReasonType.BadOriginal => "Bad Original",
-                                ImageFileItem.RejectReasonType.Rescan => "Rescan",
-                                _ => "Rejected",
-                            });
-                            break;
-                    }
+                    //    case ImageFileItem.ReviewStatusType.Rejected:
+                    //        rejectedCount++;
+                    //        ReadOnlySpan<char> suffix = rejectReason switch
+                    //        {
+                    //            ImageFileItem.RejectReasonType.BadOriginal => "_bo",
+                    //            ImageFileItem.RejectReasonType.Rescan => "_rs",
+                    //            _ => "_rejected",
+                    //        };
+                    //        string suffixed = string.Concat(item.NewName.AsSpan(), suffix, sourceExt);
+                    //        _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, suffixed);
+                    //        issueReport.Append(bookName);
+                    //        issueReport.Append('\t');
+                    //        issueReport.Append(item.NewName.AsSpan());
+                    //        issueReport.Append('\t');
+                    //        issueReport.AppendLine(rejectReason switch
+                    //        {
+                    //            ImageFileItem.RejectReasonType.BadOriginal => "Bad Original",
+                    //            ImageFileItem.RejectReasonType.Rescan => "Rescan",
+                    //            _ => "Rejected",
+                    //        });
+                    //        break;
+                    //}
 
                     totalMappedFiles++;
                     Dispatcher.Invoke(() => UpdateMappingProgress(progressDialog, totalMappedFiles, totalFilesToMap));
@@ -2388,9 +2479,9 @@ public partial class MainWindow : Window
             }
             _lastHandledIndex = _currentImageIndex;
 
-            SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Accepted,
-                                           ImageFileItem.RejectReasonType.None,
-                                           null);
+            //SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType.Accepted,
+            //                               ImageFileItem.RejectReasonType.None,
+            //                               null);
         }
 
         await NavigateImages(1);
@@ -2612,10 +2703,10 @@ public partial class MainWindow : Window
 
     private bool ShouldSuggestName(ImageFileItem item)
     {
-        if (item.ReviewStatus != ImageFileItem.ReviewStatusType.Pending)
-        {
-            return false;
-        }
+        //if (item.ReviewStatus != ImageFileItem.ReviewStatusType.Pending)
+        //{
+        //    return false;
+        //}
 
         if (string.IsNullOrWhiteSpace(item.NewFileName))
         {

@@ -67,14 +67,58 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     };
 
-    private readonly ObservableCollection<ReviewStatus> _customReviewStatuses = new();
+    private readonly ObservableCollection<ReviewStatus> _statusButtons = new();
+    private readonly ObservableCollection<ReviewStatus> _customReviewStatuses = new()
+    {
+        new ReviewStatus
+        {
+            StatusType = ReviewStatusType.Accepted,
+            StatusFlag = new ReviewStatusFlag
+            {
+                Name = "Custom1",
+                ButtonTitle = "Custom1",
+                TwoCharCode = "C1",
+                Hotkey = "F1"
+            }
+        },
+    };
+    public ReadOnlyObservableCollection<ReviewStatus> StatusButtons { get; }
     public ReadOnlyObservableCollection<ReviewStatus> CustomReviewStatuses { get; }
 
 
     public MainWindowViewModel()
     {
+        StatusButtons = new ReadOnlyObservableCollection<ReviewStatus>(_statusButtons);
         CustomReviewStatuses = new ReadOnlyObservableCollection<ReviewStatus>(_customReviewStatuses);
+
         InitializeReviewStatuses();
+        RebuildStatusButtons();
+    }
+
+    private static bool HasButtonTitle(ReviewStatus status)
+    {
+        return !string.IsNullOrWhiteSpace(status.StatusFlag.ButtonTitle);
+    }
+
+    private void RebuildStatusButtons()
+    {
+        _statusButtons.Clear();
+
+        foreach (var status in _requiredReviewStatuses)
+        {
+            if (HasButtonTitle(status))
+            {
+                _statusButtons.Add(status);
+            }
+        }
+
+        foreach (var status in _customReviewStatuses)
+        {
+            if (HasButtonTitle(status))
+            {
+                _statusButtons.Add(status);
+            }
+        }
     }
 
     private void InitializeReviewStatuses()
@@ -179,7 +223,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
         FillStatusFlagCollections(reviewStatus.StatusFlag);
         _customReviewStatuses.Add(reviewStatus);
+        RebuildStatusButtons();
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CustomReviewStatuses)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusButtons)));
         return true;
     }
 
@@ -193,9 +239,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             if (ok)
             {
                 RemoveStatusFlagFromCollections(reviewStatus.StatusFlag);
+                RebuildStatusButtons();
             }
             
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CustomReviewStatuses)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusButtons)));
             return ok;
         }
 
