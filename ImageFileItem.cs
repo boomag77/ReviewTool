@@ -6,41 +6,81 @@ using System.Windows.Media;
 
 namespace ReviewTool;
 
+public struct ReviewStatusFlag
+{
+    public string Name { get; init; }
+    public string? Description { get; init; }
+    public string? ButtonTitle { get; init; }
+    public string? TwoCharCode { get; init; }
+    public string? Suffix { get; init; }
+    public string? Prefix { get; init; }
+    public string? Hotkey { get; init; }
+}
+
+public struct ReviewStatus
+{
+    public ReviewStatusType StatusType { get; set; }
+    public ReviewStatusFlag StatusFlag { get; set; }
+
+}
+
+public enum ReviewStatusType
+{
+    Pending,
+    Accepted,
+    Rejected
+}
+
 public sealed class ImageFileItem : INotifyPropertyChanged
 {
-    public enum ReviewStatusType
+    ReviewStatus Accepted = new ReviewStatus
     {
-        Pending,
-        Accepted,
-        Rejected,
-        Flagged
-    }
-
-    public enum RejectReasonType
+        StatusType = ReviewStatusType.Accepted,
+        StatusFlag = new ReviewStatusFlag
+        {
+            Name = "Accepted",
+            ButtonTitle = "Accept",
+            TwoCharCode = "AC",
+            Hotkey = "Enter"
+        }
+    };
+    ReviewStatus Rejected = new ReviewStatus
     {
-        None,
-        BadOriginal,
-        Rescan
-    }
-
-    public struct CustomFlag
+        StatusType = ReviewStatusType.Rejected,
+        StatusFlag = new ReviewStatusFlag
+        {
+            Name = "Rescan",
+            ButtonTitle = "Rescan",
+            TwoCharCode = "RS",
+            Hotkey = "R",
+            Suffix = "rs"
+        }
+    };
+    ReviewStatus Pending = new ReviewStatus
     {
-        public string Name { get; init; }
-        public string ButtonTitle { get; init; }
-        public string TwoCharCode { get; init; }
-        public string? Suffix { get; init; }
-        public string? Prefix { get; init; }
-        public string Hotkey { get; init; }
-    }
+        StatusType = ReviewStatusType.Pending,
+        StatusFlag = new ReviewStatusFlag
+        {
+           Prefix = "_not_reviewed_"
+        }
+    };
 
+    
+
+
+    List<ReviewStatusFlag> flags = new List<ReviewStatusFlag>(5); 
+
+   
 
 
     public ImageFileItem(string filePath)
     {
         FilePath = filePath;
         FileName = Path.GetFileName(filePath);
-        ReviewStatus = ReviewStatusType.Pending;
-        RejectReason = RejectReasonType.None;
+        Status = new ReviewStatus
+        {
+            StatusType = ReviewStatusType.Pending
+        };
     }
 
     public string FilePath { get; }
@@ -60,54 +100,19 @@ public sealed class ImageFileItem : INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
-    public ReviewStatusType ReviewStatus
+    public ReviewStatus Status
     {
         get => field;
         set
         {
-            if (field == value)
-            {
-                return;
-            }
-
             field = value;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(StatusCode));
             OnPropertyChanged(nameof(StatusBrush));
         }
     }
-
-    public RejectReasonType RejectReason
-    {
-        get => field;
-        set
-        {
-            if (field == value)
-            {
-                return;
-            }
-
-            field = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(StatusCode));
-            OnPropertyChanged(nameof(StatusBrush));
-        }
-    }
-    public string StatusCode =>
-        ReviewStatus switch
-        {
-            ReviewStatusType.Accepted => "AC",
-            ReviewStatusType.Rejected => RejectReason switch
-            {
-                RejectReasonType.Rescan => "RS",
-                RejectReasonType.BadOriginal => "BO",
-                _ => "RE",
-            },
-            _ => string.Empty,
-        };
 
     public Brush StatusBrush =>
-        ReviewStatus switch
+        Status.StatusType switch
         {
             ReviewStatusType.Accepted => Brushes.LimeGreen,
             ReviewStatusType.Rejected => Brushes.OrangeRed,

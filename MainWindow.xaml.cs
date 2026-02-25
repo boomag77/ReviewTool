@@ -1500,8 +1500,7 @@ public partial class MainWindow : Window
         //await UpdatePreviewImagesAsync();
     }
 
-    private void SetReviewStatusForCurrentImage(ImageFileItem.ReviewStatusType status,
-                                                ImageFileItem.RejectReasonType rejectReason,
+    private void SetReviewStatusForCurrentImage(ReviewStatus status,,
                                                 string? newName)
     {
         if (!_isInitialReview)

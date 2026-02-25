@@ -23,6 +23,183 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    const int _maxCustomStatusesCount = 5;
+
+    private HashSet<string> _statusFlagNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _statusFlagTwoCharCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _statusFlagHotkeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _statusFlagSuffixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _statusFlagPrefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _statusFlagButtonTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private List<ReviewStatus> _requiredReviewStatuses = new List<ReviewStatus>
+    {
+        new ReviewStatus
+        {
+            StatusType = ReviewStatusType.Accepted,
+            StatusFlag = new ReviewStatusFlag
+            {
+                Name = "Accepted",
+                ButtonTitle = "Accept",
+                TwoCharCode = "AC",
+                Hotkey = "Enter"
+            }
+        },
+        new ReviewStatus
+        {
+            StatusType = ReviewStatusType.Rejected,
+            StatusFlag = new ReviewStatusFlag
+            {
+                Name = "Rescan",
+                ButtonTitle = "Rescan",
+                TwoCharCode = "RS",
+                Hotkey = "R",
+                Suffix = "rs"
+            }
+        },
+        new ReviewStatus
+        {
+            StatusType = ReviewStatusType.Pending,
+            StatusFlag = new ReviewStatusFlag
+            {
+                Name = "Pending",
+                Prefix = "_not_reviewed_"
+            }
+        }
+    };
+
+    private readonly ObservableCollection<ReviewStatus> _customReviewStatuses = new();
+    public ReadOnlyObservableCollection<ReviewStatus> CustomReviewStatuses { get; }
+
+
+    public MainWindowViewModel()
+    {
+        CustomReviewStatuses = new ReadOnlyObservableCollection<ReviewStatus>(_customReviewStatuses);
+        InitializeReviewStatuses();
+    }
+
+    private void InitializeReviewStatuses()
+    {
+        foreach (var status in _requiredReviewStatuses)
+        {
+            if (!string.IsNullOrEmpty(status.StatusFlag.Name))
+            {
+                _statusFlagNames.Add(status.StatusFlag.Name);
+            }
+            if (!string.IsNullOrEmpty(status.StatusFlag.TwoCharCode))
+            {
+                _statusFlagTwoCharCodes.Add(status.StatusFlag.TwoCharCode);
+            }
+            if (!string.IsNullOrEmpty(status.StatusFlag.Hotkey))
+            {
+                _statusFlagHotkeys.Add(status.StatusFlag.Hotkey);
+            }
+            if (!string.IsNullOrEmpty(status.StatusFlag.Suffix))
+            {
+                _statusFlagSuffixes.Add(status.StatusFlag.Suffix);
+            }
+            if (!string.IsNullOrEmpty(status.StatusFlag.Prefix))
+            {
+                _statusFlagPrefixes.Add(status.StatusFlag.Prefix);
+            }
+            if (!string.IsNullOrEmpty(status.StatusFlag.ButtonTitle))
+                _statusFlagButtonTitles.Add(status.StatusFlag.ButtonTitle);
+        }
+    }
+
+    private bool IsDuplicateStatusFlag(ReviewStatusFlag flag)
+    {
+        return (!string.IsNullOrEmpty(flag.Name) && _statusFlagNames.Contains(flag.Name)) ||
+               (!string.IsNullOrEmpty(flag.TwoCharCode) && _statusFlagTwoCharCodes.Contains(flag.TwoCharCode)) ||
+               (!string.IsNullOrEmpty(flag.Hotkey) && _statusFlagHotkeys.Contains(flag.Hotkey)) ||
+               (!string.IsNullOrEmpty(flag.Suffix) && _statusFlagSuffixes.Contains(flag.Suffix)) ||
+               (!string.IsNullOrEmpty(flag.Prefix) && _statusFlagPrefixes.Contains(flag.Prefix)) ||
+               (!string.IsNullOrEmpty(flag.ButtonTitle) && _statusFlagButtonTitles.Contains(flag.ButtonTitle));
+    }
+    private void FillStatusFlagCollections(ReviewStatusFlag flag)
+    {
+        if (!string.IsNullOrEmpty(flag.Name))
+        {
+            _statusFlagNames.Add(flag.Name);
+        }
+        if (!string.IsNullOrEmpty(flag.TwoCharCode))
+        {
+            _statusFlagTwoCharCodes.Add(flag.TwoCharCode);
+        }
+        if (!string.IsNullOrEmpty(flag.Hotkey))
+        {
+            _statusFlagHotkeys.Add(flag.Hotkey);
+        }
+        if (!string.IsNullOrEmpty(flag.Suffix))
+        {
+            _statusFlagSuffixes.Add(flag.Suffix);
+        }
+        if (!string.IsNullOrEmpty(flag.Prefix))
+        {
+            _statusFlagPrefixes.Add(flag.Prefix);
+        }
+        if (!string.IsNullOrEmpty(flag.ButtonTitle))
+        {
+            _statusFlagButtonTitles.Add(flag.ButtonTitle);
+        }
+    }
+    private void RemoveStatusFlagFromCollections(ReviewStatusFlag flag)
+    {
+        if (!string.IsNullOrEmpty(flag.Name))
+        {
+            _statusFlagNames.Remove(flag.Name);
+        }
+        if (!string.IsNullOrEmpty(flag.TwoCharCode))
+        {
+            _statusFlagTwoCharCodes.Remove(flag.TwoCharCode);
+        }
+        if (!string.IsNullOrEmpty(flag.Hotkey))
+        {
+            _statusFlagHotkeys.Remove(flag.Hotkey);
+        }
+        if (!string.IsNullOrEmpty(flag.Suffix))
+        {
+            _statusFlagSuffixes.Remove(flag.Suffix);
+        }
+        if (!string.IsNullOrEmpty(flag.Prefix))
+        {
+            _statusFlagPrefixes.Remove(flag.Prefix);
+        }
+        if (!string.IsNullOrEmpty(flag.ButtonTitle))
+        {
+            _statusFlagButtonTitles.Remove(flag.ButtonTitle);
+        }
+    }
+
+    public bool TryAddCustomReviewStatus(ReviewStatus reviewStatus)
+    {
+        if (_customReviewStatuses.Count >= _maxCustomStatusesCount || IsDuplicateStatusFlag(reviewStatus.StatusFlag))
+        {
+            return false;
+        }
+
+        FillStatusFlagCollections(reviewStatus.StatusFlag);
+        _customReviewStatuses.Add(reviewStatus);
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CustomReviewStatuses)));
+        return true;
+    }
+
+        public bool RemoveCustomReviewStatus(ReviewStatus reviewStatus)
+        {
+            if (_customReviewStatuses.Count <= 0)
+            {
+                return false;
+            }
+            bool ok = _customReviewStatuses.Remove(reviewStatus);
+            if (ok)
+            {
+                RemoveStatusFlagFromCollections(reviewStatus.StatusFlag);
+            }
+            
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CustomReviewStatuses)));
+            return ok;
+        }
+
+
     public BitmapSource? OriginalImagePreview
     {
         get => _originalImagePreview;
