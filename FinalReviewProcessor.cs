@@ -7,7 +7,7 @@ namespace ReviewTool;
 
 internal sealed class FinalReviewProcessor
 {
-    private const int ThumbnailHeightPx = 180;
+    private const int ThumbnailHeightPx = 104;
 
     private readonly FileProcessor _fileProcessor;
     private readonly Dictionary<int, string> _imagePathByThumbnailIndex = new();
@@ -100,23 +100,47 @@ internal sealed class FinalReviewProcessor
         return Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var orientedBitmap = LoadBitmapFromPath(imagePath);
-            if (orientedBitmap is null)
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
             {
                 return null;
             }
 
-            if (orientedBitmap.PixelHeight <= ThumbnailHeightPx || orientedBitmap.PixelHeight <= 0)
+            if (IsTiffFile(imagePath))
             {
-                return orientedBitmap;
+                var orientedBitmap = LoadBitmapFromPath(imagePath);
+                if (orientedBitmap is null)
+                {
+                    return null;
+                }
+
+                if (orientedBitmap.PixelHeight <= ThumbnailHeightPx || orientedBitmap.PixelHeight <= 0)
+                {
+                    return orientedBitmap;
+                }
+
+                var scaleRatio = ThumbnailHeightPx / (double)orientedBitmap.PixelHeight;
+                cancellationToken.ThrowIfCancellationRequested();
+                var downscaledBitmap = new TransformedBitmap(orientedBitmap, new ScaleTransform(scaleRatio, scaleRatio));
+                downscaledBitmap.Freeze();
+                return (BitmapSource)downscaledBitmap;
             }
 
-            var scaleRatio = ThumbnailHeightPx / (double)orientedBitmap.PixelHeight;
-            cancellationToken.ThrowIfCancellationRequested();
-            var downscaledBitmap = new TransformedBitmap(orientedBitmap, new ScaleTransform(scaleRatio, scaleRatio));
-            downscaledBitmap.Freeze();
-
-            return downscaledBitmap;
+            // Fast decode path for non-TIFF thumbnails to keep UI responsive.
+            var fastThumbnail = new BitmapImage();
+            fastThumbnail.BeginInit();
+            fastThumbnail.CacheOption = BitmapCacheOption.OnLoad;
+            fastThumbnail.DecodePixelHeight = ThumbnailHeightPx;
+            fastThumbnail.UriSource = new Uri(imagePath, UriKind.Absolute);
+            fastThumbnail.EndInit();
+            fastThumbnail.Freeze();
+            return (BitmapSource)fastThumbnail;
         }, cancellationToken);
+    }
+
+    private static bool IsTiffFile(string imagePath)
+    {
+        var extension = Path.GetExtension(imagePath);
+        return extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase);
     }
 }
