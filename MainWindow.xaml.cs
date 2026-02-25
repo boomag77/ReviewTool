@@ -53,10 +53,7 @@ public partial class MainWindow : Window
         public string FilePath { get; }
     }
 
-    public static readonly RoutedCommand NextImageCommand = new();
     public static readonly RoutedCommand PreviousImageCommand = new();
-    public static readonly RoutedCommand BadOriginalCommand = new();
-    public static readonly RoutedCommand RescanCommand = new();
 
     private readonly MainWindowViewModel _viewModel = new();
     private readonly InitialReviewProcessor _initialReviewProcessor;
@@ -93,8 +90,6 @@ public partial class MainWindow : Window
     private Brush? _performMappingDefaultBorderBrush;
     private Thickness _performMappingDefaultBorderThickness;
 
-    private readonly CancellationTokenSource _cts;
-
     private string? _currentReviewerName;
 
     public MainWindow()
@@ -113,7 +108,6 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        _cts?.Cancel();
         _processedFolderIndexCts?.Cancel();
         _originalFolderIndexCts?.Cancel();
         base.OnClosing(e);
@@ -648,20 +642,6 @@ public partial class MainWindow : Window
         MessageBox.Show(this, "Final Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
-    private async void NextImageCommand_Executed(object sender, ExecutedRoutedEventArgs e)
-    {
-        try
-        {
-            TraceInput($"NextImageCommand_Executed idx={_currentImageIndex} focus={Keyboard.FocusedElement?.GetType().Name}");
-            await HandleOkAsync();
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error navigating to next image: {ex}");
-            //MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
     private async void PreviousImageCommand_Executed(object sender, ExecutedRoutedEventArgs e)
     {
         try
@@ -677,16 +657,6 @@ public partial class MainWindow : Window
             Debug.WriteLine($"Error navigating to previous image: {ex}");
             //MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-    }
-
-    private void BadOriginalCommand_Executed(object sender, ExecutedRoutedEventArgs e)
-    {
-        BadOriginal_Click(sender, new RoutedEventArgs());
-    }
-
-    private void RescanCommand_Executed(object sender, ExecutedRoutedEventArgs e)
-    {
-        Rescan_Click(sender, new RoutedEventArgs());
     }
 
     private async void OriginalFiles_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -727,74 +697,6 @@ public partial class MainWindow : Window
         TraceInput($"SelectionChanged end idx={_currentImageIndex}");
     }
 
-    private async void OkReview_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (_transitionInProgress)
-            {
-                return;
-            }
-            if (_isInitialReview)
-            {
-                SetReviewStatusForCurrentImage(_initialReviewProcessor.GetAcceptedReviewStatus(), null);
-                await NavigateImages(1);
-                return;
-            }
-
-            await HandleOkAsync();
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error navigating from OK: {ex}");
-        }
-    }
-
-    private async void BadOriginal_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (_transitionInProgress)
-            {
-                return;
-            }
-            if (_isInitialReview)
-            {
-                SetReviewStatusForCurrentImage(_initialReviewProcessor.GetBadOriginalReviewStatus(), null);
-                await NavigateImages(1);
-                return;
-            }
-
-            Debug.WriteLine("Bad original clicked.");
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error handling bad original: {ex}");
-        }
-    }
-
-    private async void Rescan_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (_transitionInProgress)
-            {
-                return;
-            }
-            if (_isInitialReview)
-            {
-                SetReviewStatusForCurrentImage(_initialReviewProcessor.GetRescanReviewStatus(), null);
-                await NavigateImages(1);
-                return;
-            }
-
-            Debug.WriteLine("Rescan clicked.");
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error handling rescan: {ex}");
-        }
-    }
 
     private void AddEditCustomFlags_Click(object sender, RoutedEventArgs e)
     {
@@ -2235,23 +2137,6 @@ public partial class MainWindow : Window
             $"Missing: {missingCount}";
         ShowMappingCompleteDialog(summaryText, reportText);
         return true;
-    }
-
-    private static ReadOnlySpan<char> GetFileNameWithoutExtension(ReadOnlySpan<char> fileName)
-    {
-        if (fileName.Length == 0)
-            return new ReadOnlySpan<char>();
-
-        int i = fileName.Length - 1;
-        while (i >= 0 && fileName[i] != '.')
-        {
-            i--;
-        }
-        if (i < 0)
-        {
-            return fileName;
-        }
-        return fileName.Slice(0, i);
     }
 
     private static bool IsSeparator(char c) => c == '\\';
