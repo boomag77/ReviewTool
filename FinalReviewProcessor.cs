@@ -7,7 +7,8 @@ namespace ReviewTool;
 
 internal sealed class FinalReviewProcessor
 {
-    private const int ThumbnailHeightPx = 104;
+    private const int MinThumbnailHeightPx = 48;
+    private int _thumbnailHeightPx = 104;
 
     private readonly FileProcessor _fileProcessor;
     private readonly Dictionary<int, string> _imagePathByThumbnailIndex = new();
@@ -15,6 +16,11 @@ internal sealed class FinalReviewProcessor
     public FinalReviewProcessor(FileProcessor fileProcessor)
     {
         _fileProcessor = fileProcessor;
+    }
+
+    public void SetThumbnailHeight(int thumbnailHeightPx)
+    {
+        _thumbnailHeightPx = Math.Max(MinThumbnailHeightPx, thumbnailHeightPx);
     }
 
     public List<FinalReviewThumbnailItem> BuildThumbnailItems(IReadOnlyList<string> imagePaths)
@@ -33,7 +39,7 @@ internal sealed class FinalReviewProcessor
             thumbnailItems.Add(new FinalReviewThumbnailItem
             {
                 Index = index,
-                Label = Path.GetFileNameWithoutExtension(imagePath),
+                Label = System.IO.Path.GetFileNameWithoutExtension(imagePath),
                 FilePath = imagePath,
                 Thumbnail = null
             });
@@ -90,7 +96,11 @@ internal sealed class FinalReviewProcessor
     {
         return Task.Run(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+
             return LoadBitmapFromPath(imagePath);
         }, cancellationToken);
     }
@@ -99,13 +109,17 @@ internal sealed class FinalReviewProcessor
     {
         return Task.Run(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+
             if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
             {
                 return null;
             }
 
-            if (IsTiffFile(imagePath))
+            if (IsTiffFile(imagePath.AsSpan()))
             {
                 var orientedBitmap = LoadBitmapFromPath(imagePath);
                 if (orientedBitmap is null)
@@ -113,13 +127,17 @@ internal sealed class FinalReviewProcessor
                     return null;
                 }
 
-                if (orientedBitmap.PixelHeight <= ThumbnailHeightPx || orientedBitmap.PixelHeight <= 0)
+                if (orientedBitmap.PixelHeight <= _thumbnailHeightPx || orientedBitmap.PixelHeight <= 0)
                 {
                     return orientedBitmap;
                 }
 
-                var scaleRatio = ThumbnailHeightPx / (double)orientedBitmap.PixelHeight;
-                cancellationToken.ThrowIfCancellationRequested();
+                var scaleRatio = _thumbnailHeightPx / (double)orientedBitmap.PixelHeight;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return null;
+                }
+
                 var downscaledBitmap = new TransformedBitmap(orientedBitmap, new ScaleTransform(scaleRatio, scaleRatio));
                 downscaledBitmap.Freeze();
                 return (BitmapSource)downscaledBitmap;
@@ -129,7 +147,7 @@ internal sealed class FinalReviewProcessor
             var fastThumbnail = new BitmapImage();
             fastThumbnail.BeginInit();
             fastThumbnail.CacheOption = BitmapCacheOption.OnLoad;
-            fastThumbnail.DecodePixelHeight = ThumbnailHeightPx;
+            fastThumbnail.DecodePixelHeight = _thumbnailHeightPx;
             fastThumbnail.UriSource = new Uri(imagePath, UriKind.Absolute);
             fastThumbnail.EndInit();
             fastThumbnail.Freeze();
@@ -137,10 +155,9 @@ internal sealed class FinalReviewProcessor
         }, cancellationToken);
     }
 
-    private static bool IsTiffFile(string imagePath)
+    private static bool IsTiffFile(ReadOnlySpan<char> imagePathSpan)
     {
-        var extension = Path.GetExtension(imagePath);
-        return extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase);
+        return imagePathSpan.EndsWith(".tif", StringComparison.OrdinalIgnoreCase) ||
+           imagePathSpan.EndsWith(".tiff", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -85,6 +85,8 @@ public partial class MainWindow : Window
     private FinalReviewThumbnailsWindow? _finalReviewThumbnailsWindow;
     private CancellationTokenSource? _finalReviewThumbnailLoadCts;
     private bool _suppressShowThumbnailsCheckboxChange;
+    private int _finalReviewThumbnailHeightPx = 104;
+    private int _finalReviewThumbnailMaxHeightPx = 160;
 
     private string _originalFolderPath = string.Empty;
 
@@ -104,6 +106,7 @@ public partial class MainWindow : Window
         _finalReviewProcessor = new FinalReviewProcessor(_fileProcessor);
         DataContext = _viewModel;
         TryLoadPersistedReviewStatuses();
+        TryLoadPersistedFinalReviewThumbnailSettings();
         Loaded += (_, _) => Keyboard.Focus(this);
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         _originalFolderIndex = new CurrentFolderIndex(this);
@@ -642,6 +645,7 @@ public partial class MainWindow : Window
 
     private void FinishFinalReview()
     {
+        PersistFinalReviewThumbnailSettings();
         SetShowThumbnailsCheckBox(false);
         CloseFinalReviewThumbnailsWindow();
         ClearReviewState(clearProcessed: true);
@@ -766,6 +770,21 @@ public partial class MainWindow : Window
         }
 
         Debug.WriteLine($"Failed to apply persisted statuses: {validationError}");
+    }
+
+    private void TryLoadPersistedFinalReviewThumbnailSettings()
+    {
+        if (AppSettings.TryLoadFinalReviewThumbnailSettings(out var thumbnailSizePx,
+                                                            out var thumbnailMaxSizePx,
+                                                            out var loadError))
+        {
+            _finalReviewThumbnailMaxHeightPx = thumbnailMaxSizePx;
+            _finalReviewThumbnailHeightPx = Math.Clamp(thumbnailSizePx, 48, _finalReviewThumbnailMaxHeightPx);
+            _finalReviewProcessor.SetThumbnailHeight(_finalReviewThumbnailHeightPx);
+            return;
+        }
+
+        Debug.WriteLine(loadError);
     }
 
     private async void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -2606,11 +2625,16 @@ public partial class MainWindow : Window
         {
             Owner = this
         };
+        _finalReviewThumbnailsWindow.SetThumbnailMaxSize(_finalReviewThumbnailMaxHeightPx);
+        _finalReviewThumbnailsWindow.SetThumbnailSize(_finalReviewThumbnailHeightPx);
         _finalReviewThumbnailsWindow.ThumbnailSelected += FinalReviewThumbnailsWindow_ThumbnailSelected;
+        _finalReviewThumbnailsWindow.ThumbnailSizeChanged += FinalReviewThumbnailsWindow_ThumbnailSizeChanged;
+        _finalReviewThumbnailsWindow.ThumbnailMaxSizeChanged += FinalReviewThumbnailsWindow_ThumbnailMaxSizeChanged;
         _finalReviewThumbnailsWindow.Closed += FinalReviewThumbnailsWindow_Closed;
         _finalReviewThumbnailsWindow.Show();
 
         var sourceImagePaths = BuildFinalReviewSourceImagePaths();
+        _finalReviewProcessor.SetThumbnailHeight(_finalReviewThumbnailHeightPx);
         var thumbnailItems = _finalReviewProcessor.BuildThumbnailItems(sourceImagePaths);
         if (_finalReviewThumbnailsWindow is null)
         {
@@ -2631,6 +2655,8 @@ public partial class MainWindow : Window
         }
 
         _finalReviewThumbnailsWindow.ThumbnailSelected -= FinalReviewThumbnailsWindow_ThumbnailSelected;
+        _finalReviewThumbnailsWindow.ThumbnailSizeChanged -= FinalReviewThumbnailsWindow_ThumbnailSizeChanged;
+        _finalReviewThumbnailsWindow.ThumbnailMaxSizeChanged -= FinalReviewThumbnailsWindow_ThumbnailMaxSizeChanged;
         _finalReviewThumbnailsWindow.Closed -= FinalReviewThumbnailsWindow_Closed;
         _finalReviewThumbnailsWindow.Close();
         _finalReviewThumbnailsWindow = null;
@@ -2642,11 +2668,43 @@ public partial class MainWindow : Window
         if (_finalReviewThumbnailsWindow is not null)
         {
             _finalReviewThumbnailsWindow.ThumbnailSelected -= FinalReviewThumbnailsWindow_ThumbnailSelected;
+            _finalReviewThumbnailsWindow.ThumbnailSizeChanged -= FinalReviewThumbnailsWindow_ThumbnailSizeChanged;
+            _finalReviewThumbnailsWindow.ThumbnailMaxSizeChanged -= FinalReviewThumbnailsWindow_ThumbnailMaxSizeChanged;
             _finalReviewThumbnailsWindow.Closed -= FinalReviewThumbnailsWindow_Closed;
         }
 
+        PersistFinalReviewThumbnailSettings();
         _finalReviewThumbnailsWindow = null;
         SetShowThumbnailsCheckBox(false);
+    }
+
+    private void FinalReviewThumbnailsWindow_ThumbnailSizeChanged(int thumbnailHeightPx)
+    {
+        _finalReviewThumbnailHeightPx = thumbnailHeightPx;
+        _finalReviewProcessor.SetThumbnailHeight(_finalReviewThumbnailHeightPx);
+        if (_finalReviewThumbnailsWindow is null || _finalReviewThumbnailsWindow.Items.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var item in _finalReviewThumbnailsWindow.Items)
+        {
+            item.Thumbnail = null;
+        }
+
+        StartFinalReviewThumbnailLazyLoading(_finalReviewThumbnailsWindow.Items.ToList());
+    }
+
+    private void FinalReviewThumbnailsWindow_ThumbnailMaxSizeChanged(int thumbnailMaxHeightPx)
+    {
+        _finalReviewThumbnailMaxHeightPx = thumbnailMaxHeightPx;
+        if (_finalReviewThumbnailHeightPx > _finalReviewThumbnailMaxHeightPx)
+        {
+            _finalReviewThumbnailHeightPx = _finalReviewThumbnailMaxHeightPx;
+            _finalReviewProcessor.SetThumbnailHeight(_finalReviewThumbnailHeightPx);
+        }
+
+        PersistFinalReviewThumbnailSettings();
     }
 
     private void StartFinalReviewThumbnailLazyLoading(IReadOnlyList<FinalReviewThumbnailItem> thumbnailItems)
@@ -2675,7 +2733,15 @@ public partial class MainWindow : Window
 
                 loadTasks.Add(Task.Run(async () =>
                 {
-                    await loadThrottle.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        await loadThrottle.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
                     try
                     {
                         BitmapSource? thumbnailBitmap;
@@ -2700,15 +2766,22 @@ public partial class MainWindow : Window
                             return;
                         }
 
-                        await Dispatcher.InvokeAsync(
-                            () =>
-                            {
-                                if (!cancellationToken.IsCancellationRequested)
+                        try
+                        {
+                            await Dispatcher.InvokeAsync(
+                                () =>
                                 {
-                                    thumbnailItem.Thumbnail = thumbnailBitmap;
-                                }
-                            },
-                            DispatcherPriority.Background);
+                                    if (!cancellationToken.IsCancellationRequested)
+                                    {
+                                        thumbnailItem.Thumbnail = thumbnailBitmap;
+                                    }
+                                },
+                                DispatcherPriority.Background);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return;
+                        }
                     }
                     finally
                     {
@@ -2737,6 +2810,18 @@ public partial class MainWindow : Window
         _finalReviewThumbnailLoadCts?.Cancel();
         _finalReviewThumbnailLoadCts?.Dispose();
         _finalReviewThumbnailLoadCts = null;
+    }
+
+    private void PersistFinalReviewThumbnailSettings()
+    {
+        if (AppSettings.TrySaveFinalReviewThumbnailSettings(_finalReviewThumbnailHeightPx,
+                                                            _finalReviewThumbnailMaxHeightPx,
+                                                            out var saveError))
+        {
+            return;
+        }
+
+        Debug.WriteLine(saveError);
     }
 
     private async void FinalReviewThumbnailsWindow_ThumbnailSelected(int index)

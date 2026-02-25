@@ -12,8 +12,110 @@
         MinWidth="760"
         Background="#101318"
         WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <Style x:Key="ThumbSizeSliderStyle" TargetType="Slider">
+            <Setter Property="Foreground" Value="#1E66E0"/>
+            <Setter Property="Background" Value="#2F3136"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Margin="0,2,0,2">
+                            <Track x:Name="PART_Track" VerticalAlignment="Center">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge" Focusable="False" Background="Transparent" BorderThickness="0">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Height="8"
+                                                        Background="#2F3136"
+                                                        CornerRadius="4" />
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge" Focusable="False" Background="Transparent" BorderThickness="0">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Height="8"
+                                                        Background="#2F3136"
+                                                        CornerRadius="4" />
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="16" Height="16" Background="#E5E7EA" BorderBrush="#1E66E0" BorderThickness="1">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="8" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="RoundedMaxSizeTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="#1A1F27"/>
+            <Setter Property="Foreground" Value="#F1F4F8"/>
+            <Setter Property="BorderBrush" Value="#2A2F38"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4,1"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <StackPanel Orientation="Horizontal" Margin="4,2,4,8">
+            <TextBlock Text="Thumb size"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0"
+                       Foreground="#F1F4F8"/>
+            <Slider x:Name="ThumbnailSizeSlider"
+                    Style="{StaticResource ThumbSizeSliderStyle}"
+                    Width="180"
+                    Minimum="72"
+                    Maximum="160"
+                    Value="104"
+                    TickFrequency="8"
+                    IsSnapToTickEnabled="True"
+                    ValueChanged="ThumbnailSizeSlider_ValueChanged"/>
+            <TextBlock Text="Max"
+                       VerticalAlignment="Center"
+                       Margin="10,0,6,0"
+                       Foreground="#F1F4F8"/>
+            <TextBox x:Name="ThumbnailMaxSizeTextBox"
+                     Style="{StaticResource RoundedMaxSizeTextBoxStyle}"
+                     Width="46"
+                     Text="160"
+                     TextAlignment="Right"
+                     LostFocus="ThumbnailMaxSizeTextBox_LostFocus"
+                     KeyDown="ThumbnailMaxSizeTextBox_KeyDown"/>
+        </StackPanel>
         <ListBox x:Name="ThumbnailsList"
+                 Grid.Row="1"
                  Background="#101318"
                  BorderThickness="0"
                  Foreground="#F1F4F8"
@@ -42,12 +144,12 @@
             </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
                 <DataTemplate DataType="{x:Type local:FinalReviewThumbnailItem}">
-                    <StackPanel Width="88">
+                    <StackPanel Width="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ThumbnailItemWidth}">
                         <Border Background="#0E1218"
                                 BorderBrush="#2A2F38"
                                 BorderThickness="1"
-                                Width="68"
-                                Height="104"
+                                Width="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ThumbnailTileWidth}"
+                                Height="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ThumbnailTileHeight}"
                                 HorizontalAlignment="Center">
                             <Border ClipToBounds="True">
                                 <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
