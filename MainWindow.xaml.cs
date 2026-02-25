@@ -106,6 +106,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         DataContext = _viewModel;
+        TryLoadPersistedReviewStatuses();
         Loaded += (_, _) => Keyboard.Focus(this);
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         _originalFolderIndex = new CurrentFolderIndex(this);
@@ -812,18 +813,51 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_viewModel.TryApplyReviewStatuses(editorWindow.ResultRequiredStatuses,
-                                              editorWindow.ResultCustomStatuses,
-                                              out var validationError))
+        if (!_viewModel.TryApplyReviewStatuses(editorWindow.ResultRequiredStatuses,
+                                               editorWindow.ResultCustomStatuses,
+                                               out var validationError))
+        {
+            MessageBox.Show(this,
+                            validationError,
+                            "Custom statuses",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+            return;
+        }
+
+        if (AppSettings.TrySaveReviewStatuses(_viewModel.RequiredReviewStatuses,
+                                              _viewModel.CustomReviewStatuses,
+                                              out var saveError))
         {
             return;
         }
 
         MessageBox.Show(this,
-                        validationError,
+                        saveError,
                         "Custom statuses",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
+    }
+
+    private void TryLoadPersistedReviewStatuses()
+    {
+        if (!AppSettings.TryLoadReviewStatuses(out var requiredStatuses, out var customStatuses, out var loadError))
+        {
+            Debug.WriteLine(loadError);
+            return;
+        }
+
+        if (requiredStatuses.Count == 0 && customStatuses.Count == 0)
+        {
+            return;
+        }
+
+        if (_viewModel.TryApplyReviewStatuses(requiredStatuses, customStatuses, out var validationError))
+        {
+            return;
+        }
+
+        Debug.WriteLine($"Failed to apply persisted statuses: {validationError}");
     }
 
     private async void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -913,21 +947,21 @@ public partial class MainWindow : Window
         {
             return;
         }
-
-        var status = statusButtonContext.ReviewStatus;
-        var flag = status.StatusFlag;
-        Debug.WriteLine(
-            "StatusBtton_Click: " +
-            $"FilePath='{statusButtonContext.FilePath}', " +
-            $"StatusType='{status.StatusType}', " +
-            $"Name='{flag.Name}', " +
-            $"Description='{flag.Description ?? string.Empty}', " +
-            $"ButtonTitle='{flag.ButtonTitle ?? string.Empty}', " +
-            $"TwoCharCode='{flag.TwoCharCode ?? string.Empty}', " +
-            $"Hotkey='{flag.Hotkey ?? string.Empty}', " +
-            $"Suffix='{flag.Suffix ?? string.Empty}', " +
-            $"Prefix='{flag.Prefix ?? string.Empty}'");
-
+#if DEBUG
+        //var status = statusButtonContext.ReviewStatus;
+        //var flag = status.StatusFlag;
+        //Debug.WriteLine(
+        //    "StatusBtton_Click: " +
+        //    $"FilePath='{statusButtonContext.FilePath}', " +
+        //    $"StatusType='{status.StatusType}', " +
+        //    $"Name='{flag.Name}', " +
+        //    $"Description='{flag.Description ?? string.Empty}', " +
+        //    $"ButtonTitle='{flag.ButtonTitle ?? string.Empty}', " +
+        //    $"TwoCharCode='{flag.TwoCharCode ?? string.Empty}', " +
+        //    $"Hotkey='{flag.Hotkey ?? string.Empty}', " +
+        //    $"Suffix='{flag.Suffix ?? string.Empty}', " +
+        //    $"Prefix='{flag.Prefix ?? string.Empty}'");
+#endif
         await SetReviewStatusToCurrentImage(statusButtonContext.ReviewStatus, statusButtonContext.FilePath, null);
     }
 
@@ -1915,9 +1949,9 @@ public partial class MainWindow : Window
                     _ => "Pending"
                 };
 
-                string rejectStr = item.Status.StatusType == ReviewStatusType.Rejected
-                    ? (item.Status.StatusFlag.Name ?? "Rejected")
-                    : "None";
+                string rejectStr = string.IsNullOrWhiteSpace(item.Status.StatusFlag.Name)
+                    ? "None"
+                    : item.Status.StatusFlag.Name!;
 
                 ImageFileMappingInfo itemMappingInfo = new ImageFileMappingInfo
                 {
@@ -2190,9 +2224,7 @@ public partial class MainWindow : Window
                     }
 
                     var statusType = ParseStatusTypeFromMapping(item.ReviewStatus);
-                    var rejectFlagName = statusType == ReviewStatusType.Rejected
-                        ? NormalizeRejectFlagName(item.RejectReason)
-                        : string.Empty;
+                    var rejectFlagName = NormalizeRejectFlagName(item.RejectReason);
 
                     if (TryGetNumericPrefix(item.NewName.AsSpan(), out var pageNumber, out _)
                         && pageNumber > 0)
@@ -2206,8 +2238,9 @@ public partial class MainWindow : Window
                     {
                         case ReviewStatusType.Pending:
                             ReadOnlySpan<char> originalBase = item.NewName.AsSpan();
-                            var pendingPrefix = GetPendingPrefix();
-                            string notReviewedFileName = string.Concat(pendingPrefix.AsSpan(), originalBase, sourceExt);
+                            var pendingPrefix = GetPrefixForStatus(statusType, rejectFlagName);
+                            var pendingSuffix = GetSuffixForStatus(statusType, rejectFlagName);
+                            string notReviewedFileName = string.Concat(pendingPrefix.AsSpan(), originalBase, pendingSuffix.AsSpan(), sourceExt);
                             _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, notReviewedFileName);
                             issueReport.Append(bookName);
                             issueReport.Append('\t');
@@ -2217,15 +2250,18 @@ public partial class MainWindow : Window
                             break;
 
                         case ReviewStatusType.Accepted:
-                            string approvedFileName = string.Concat(item.NewName.AsSpan(), sourceExt);
+                            var approvedPrefix = GetPrefixForStatus(statusType, rejectFlagName);
+                            var approvedSuffix = GetSuffixForStatus(statusType, rejectFlagName);
+                            string approvedFileName = string.Concat(approvedPrefix.AsSpan(), item.NewName.AsSpan(), approvedSuffix.AsSpan(), sourceExt);
                             _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, approvedFileName);
                             approvedCount++;
                             break;
 
                         case ReviewStatusType.Rejected:
                             rejectedCount++;
-                            var rejectedSuffix = GetRejectedSuffix(rejectFlagName);
-                            string suffixed = string.Concat(item.NewName.AsSpan(), rejectedSuffix.AsSpan(), sourceExt);
+                            var rejectedPrefix = GetPrefixForStatus(statusType, rejectFlagName);
+                            var rejectedSuffix = GetSuffixForStatus(statusType, rejectFlagName);
+                            string suffixed = string.Concat(rejectedPrefix.AsSpan(), item.NewName.AsSpan(), rejectedSuffix.AsSpan(), sourceExt);
                             _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, suffixed);
                             issueReport.Append(bookName);
                             issueReport.Append('\t');
@@ -2343,40 +2379,100 @@ public partial class MainWindow : Window
         return rejectReasonValue.Trim();
     }
 
-    private string GetPendingPrefix()
+    private string GetPrefixForStatus(ReviewStatusType statusType, string flagName)
     {
-        var pendingStatus = GetPendingReviewStatus();
-        if (!string.IsNullOrWhiteSpace(pendingStatus.StatusFlag.Prefix))
+        if (!string.IsNullOrWhiteSpace(flagName)
+            && _viewModel.TryGetReviewStatusByFlagName(flagName, out var statusByFlag)
+            && !string.IsNullOrWhiteSpace(statusByFlag.StatusFlag.Prefix))
         {
-            return pendingStatus.StatusFlag.Prefix!;
+            return NormalizePrefixForFileName(statusByFlag.StatusFlag.Prefix!);
         }
 
-        return "_not_reviewed_";
+        if (_viewModel.TryGetRequiredReviewStatus(statusType, out var requiredStatus)
+            && !string.IsNullOrWhiteSpace(requiredStatus.StatusFlag.Prefix))
+        {
+            return NormalizePrefixForFileName(requiredStatus.StatusFlag.Prefix!);
+        }
+
+        return statusType == ReviewStatusType.Pending ? "_not_reviewed_" : string.Empty;
     }
 
-    private string GetRejectedSuffix(string rejectFlagName)
+    private static string NormalizePrefixForFileName(string prefix)
     {
-        if (!string.IsNullOrWhiteSpace(rejectFlagName)
-            && _viewModel.TryGetReviewStatusByFlagName(rejectFlagName, out var reviewStatus)
-            && !string.IsNullOrWhiteSpace(reviewStatus.StatusFlag.Suffix))
+        var normalizedToken = NormalizeFileNameAffixToken(prefix);
+        if (string.IsNullOrWhiteSpace(normalizedToken))
         {
-            var configuredSuffix = reviewStatus.StatusFlag.Suffix!;
-            return configuredSuffix.StartsWith("_", StringComparison.Ordinal)
-                ? configuredSuffix
-                : "_" + configuredSuffix;
+            return string.Empty;
         }
 
-        if (string.Equals(rejectFlagName, RescanFlagName, StringComparison.OrdinalIgnoreCase))
+        return normalizedToken + "_";
+    }
+
+    private string GetSuffixForStatus(ReviewStatusType statusType, string flagName)
+    {
+        if (!string.IsNullOrWhiteSpace(flagName)
+            && _viewModel.TryGetReviewStatusByFlagName(flagName, out var reviewStatus)
+            && !string.IsNullOrWhiteSpace(reviewStatus.StatusFlag.Suffix))
+        {
+            return NormalizeSuffixForFileName(reviewStatus.StatusFlag.Suffix!);
+        }
+
+        if (_viewModel.TryGetRequiredReviewStatus(statusType, out var requiredStatus)
+            && !string.IsNullOrWhiteSpace(requiredStatus.StatusFlag.Suffix))
+        {
+            return NormalizeSuffixForFileName(requiredStatus.StatusFlag.Suffix!);
+        }
+
+        if (statusType != ReviewStatusType.Rejected)
+        {
+            return string.Empty;
+        }
+
+        if (string.Equals(flagName, RescanFlagName, StringComparison.OrdinalIgnoreCase))
         {
             return "_rs";
         }
 
-        if (string.Equals(rejectFlagName, BadOriginalFlagName, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(flagName, BadOriginalFlagName, StringComparison.OrdinalIgnoreCase))
         {
             return "_bo";
         }
 
         return "_rejected";
+    }
+
+    private static string NormalizeSuffixForFileName(string suffix)
+    {
+        var normalizedToken = NormalizeFileNameAffixToken(suffix);
+        if (string.IsNullOrWhiteSpace(normalizedToken))
+        {
+            return string.Empty;
+        }
+
+        return "_" + normalizedToken;
+    }
+
+    private static string NormalizeFileNameAffixToken(string rawToken)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken))
+        {
+            return string.Empty;
+        }
+
+        var trimmedToken = rawToken.Trim();
+        while (trimmedToken.Length > 0 &&
+               (trimmedToken[0] == '_' || trimmedToken[0] == '-' || trimmedToken[0] == ' '))
+        {
+            trimmedToken = trimmedToken[1..];
+        }
+
+        while (trimmedToken.Length > 0 &&
+               (trimmedToken[^1] == '_' || trimmedToken[^1] == '-' || trimmedToken[^1] == ' '))
+        {
+            trimmedToken = trimmedToken[..^1];
+        }
+
+        return trimmedToken;
     }
 
     private static bool IsSeparator(char c) => c == '\\';

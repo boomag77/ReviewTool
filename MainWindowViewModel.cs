@@ -68,20 +68,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     };
 
     private readonly ObservableCollection<ReviewStatus> _statusButtons = new();
-    private readonly ObservableCollection<ReviewStatus> _customReviewStatuses = new()
-    {
-        new ReviewStatus
-        {
-            StatusType = ReviewStatusType.Accepted,
-            StatusFlag = new ReviewStatusFlag
-            {
-                Name = "Custom1",
-                ButtonTitle = "Custom1",
-                TwoCharCode = "C1",
-                Hotkey = "F1"
-            }
-        },
-    };
+    private readonly ObservableCollection<ReviewStatus> _customReviewStatuses = new();
     public ReadOnlyObservableCollection<ReviewStatus> StatusButtons { get; }
     public IReadOnlyList<ReviewStatus> RequiredReviewStatuses => _requiredReviewStatuses;
     public ReadOnlyObservableCollection<ReviewStatus> CustomReviewStatuses { get; }
