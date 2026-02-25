@@ -243,7 +243,24 @@
                     <Button Style="{StaticResource FinalReviewButtonStyle}" Content="{Binding FinalReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False" IsEnabled="True"
                             Click="StartFinalReview_Click" />
-                    
+                    <CheckBox x:Name="ShowThumbnailsCheckBox"
+                              Content="Show thumbnails"
+                              Margin="12,0,0,0"
+                              VerticalAlignment="Center"
+                              Foreground="{StaticResource PipelineTextBrush}"
+                              Checked="ShowThumbnailsCheckBox_Checked"
+                              Unchecked="ShowThumbnailsCheckBox_Unchecked">
+                        <CheckBox.Style>
+                            <Style TargetType="CheckBox">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFinalReview}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </CheckBox.Style>
+                    </CheckBox>
                 </StackPanel>
                 <TextBlock Grid.Column="1"
                            Text="{Binding TargetFolderDisplayPath}"

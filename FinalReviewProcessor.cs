@@ -100,7 +100,7 @@ internal sealed class FinalReviewProcessor
         return Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var orientedBitmap = LoadBitmapFromPathAsync(imagePath, cancellationToken).Result;
+            var orientedBitmap = LoadBitmapFromPath(imagePath);
             if (orientedBitmap is null)
             {
                 return null;

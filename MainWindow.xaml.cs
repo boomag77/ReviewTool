@@ -84,6 +84,7 @@ public partial class MainWindow : Window
     private bool _transitionInProgress;
     private FinalReviewThumbnailsWindow? _finalReviewThumbnailsWindow;
     private CancellationTokenSource? _finalReviewThumbnailLoadCts;
+    private bool _suppressShowThumbnailsCheckboxChange;
 
     private string _originalFolderPath = string.Empty;
 
@@ -152,6 +153,7 @@ public partial class MainWindow : Window
         _isFinalReview = true;
         _initialReviewFolder = null;
         _viewModel.IsInitialReview = false;
+        _viewModel.IsFinalReview = true;
         _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>();
         _viewModel.SelectedOriginalFile = null;
         _viewModel.FinalReviewButtonText = "Finish Final Review";
@@ -159,6 +161,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(originalFolder))
         {
             _isFinalReview = false;
+            _viewModel.IsFinalReview = false;
             _viewModel.FinalReviewButtonText = "Start Final Review...";
             return;
         }
@@ -168,6 +171,7 @@ public partial class MainWindow : Window
         _viewModel.OriginalImagePreview = null;
         _viewModel.ReviewingImagePreview = null;
         UpdatePreviewLabels();
+        SetShowThumbnailsCheckBox(true);
         await OpenFinalReviewThumbnailsWindowAsync();
         FocusWindowForInputDeferred();
     }
@@ -233,8 +237,10 @@ public partial class MainWindow : Window
         _isInitialReview = true;
         _isFinalReview = false;
         _viewModel.IsInitialReview = true;
+        _viewModel.IsFinalReview = false;
         _viewModel.InitialReviewButtonText = "Finish Initial Review";
         _viewModel.FinalReviewButtonText = "Start Final Review...";
+        SetShowThumbnailsCheckBox(false);
         //_fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
         _suggestedNames.Clear();
         _viewModel.IsAutoFillEnabled = false;
@@ -339,9 +345,11 @@ public partial class MainWindow : Window
         _initialReviewFolder = null;
         _originalFolderPath = string.Empty;
         _viewModel.IsInitialReview = false;
+        _viewModel.IsFinalReview = false;
         _viewModel.TargetFolderDisplayPath = string.Empty;
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
         _viewModel.FinalReviewButtonText = "Start Final Review...";
+        SetShowThumbnailsCheckBox(false);
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
         _currentReviewerName = null;
@@ -634,9 +642,11 @@ public partial class MainWindow : Window
 
     private void FinishFinalReview()
     {
+        SetShowThumbnailsCheckBox(false);
         CloseFinalReviewThumbnailsWindow();
         ClearReviewState(clearProcessed: true);
         _isFinalReview = false;
+        _viewModel.IsFinalReview = false;
         _viewModel.FinalReviewButtonText = "Start Final Review...";
         MessageBox.Show(this, "Final Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
     }
@@ -2597,6 +2607,7 @@ public partial class MainWindow : Window
             Owner = this
         };
         _finalReviewThumbnailsWindow.ThumbnailSelected += FinalReviewThumbnailsWindow_ThumbnailSelected;
+        _finalReviewThumbnailsWindow.Closed += FinalReviewThumbnailsWindow_Closed;
         _finalReviewThumbnailsWindow.Show();
 
         var sourceImagePaths = BuildFinalReviewSourceImagePaths();
@@ -2620,8 +2631,22 @@ public partial class MainWindow : Window
         }
 
         _finalReviewThumbnailsWindow.ThumbnailSelected -= FinalReviewThumbnailsWindow_ThumbnailSelected;
+        _finalReviewThumbnailsWindow.Closed -= FinalReviewThumbnailsWindow_Closed;
         _finalReviewThumbnailsWindow.Close();
         _finalReviewThumbnailsWindow = null;
+    }
+
+    private void FinalReviewThumbnailsWindow_Closed(object? sender, EventArgs e)
+    {
+        CancelFinalReviewThumbnailLoading();
+        if (_finalReviewThumbnailsWindow is not null)
+        {
+            _finalReviewThumbnailsWindow.ThumbnailSelected -= FinalReviewThumbnailsWindow_ThumbnailSelected;
+            _finalReviewThumbnailsWindow.Closed -= FinalReviewThumbnailsWindow_Closed;
+        }
+
+        _finalReviewThumbnailsWindow = null;
+        SetShowThumbnailsCheckBox(false);
     }
 
     private void StartFinalReviewThumbnailLazyLoading(IReadOnlyList<FinalReviewThumbnailItem> thumbnailItems)
@@ -2635,9 +2660,12 @@ public partial class MainWindow : Window
         var loadingCts = new CancellationTokenSource();
         _finalReviewThumbnailLoadCts = loadingCts;
         var cancellationToken = loadingCts.Token;
+        var maxParallelLoads = Math.Clamp(Environment.ProcessorCount / 2, 2, 6);
+        var loadThrottle = new SemaphoreSlim(maxParallelLoads, maxParallelLoads);
 
         _ = Task.Run(async () =>
         {
+            var loadTasks = new List<Task>(thumbnailItems.Count);
             foreach (var thumbnailItem in thumbnailItems)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -2645,47 +2673,61 @@ public partial class MainWindow : Window
                     return;
                 }
 
-                BitmapSource? thumbnailBitmap;
-                try
+                loadTasks.Add(Task.Run(async () =>
                 {
-                    thumbnailBitmap = await _finalReviewProcessor
-                        .LoadThumbnailForThumbnailIndexAsync(thumbnailItem.Index, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"Failed to lazy-load thumbnail for index {thumbnailItem.Index}: {ex.Message}");
-                    continue;
-                }
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                try
-                {
-                    await Dispatcher.InvokeAsync(
-                        () =>
+                    await loadThrottle.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        BitmapSource? thumbnailBitmap;
+                        try
                         {
-                            if (!cancellationToken.IsCancellationRequested)
+                            thumbnailBitmap = await _finalReviewProcessor
+                                .LoadThumbnailForThumbnailIndexAsync(thumbnailItem.Index, cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return;
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Failed to lazy-load thumbnail for index {thumbnailItem.Index}: {ex.Message}");
+                            return;
+                        }
+
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return;
+                        }
+
+                        await Dispatcher.InvokeAsync(
+                            () =>
                             {
-                                thumbnailItem.Thumbnail = thumbnailBitmap;
-                            }
-                        },
-                        DispatcherPriority.Background);
-                }
-                catch (TaskCanceledException)
-                {
-                    return;
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
+                                if (!cancellationToken.IsCancellationRequested)
+                                {
+                                    thumbnailItem.Thumbnail = thumbnailBitmap;
+                                }
+                            },
+                            DispatcherPriority.Background);
+                    }
+                    finally
+                    {
+                        loadThrottle.Release();
+                    }
+                }, cancellationToken));
+            }
+
+            try
+            {
+                await Task.WhenAll(loadTasks).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            finally
+            {
+                loadThrottle.Dispose();
             }
         }, cancellationToken);
     }
@@ -2727,6 +2769,49 @@ public partial class MainWindow : Window
         }
 
         return imagePaths;
+    }
+
+    private async void ShowThumbnailsCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_suppressShowThumbnailsCheckboxChange || !_isFinalReview)
+        {
+            return;
+        }
+
+        if (_finalReviewThumbnailsWindow is not null)
+        {
+            _finalReviewThumbnailsWindow.Show();
+            _finalReviewThumbnailsWindow.Activate();
+            if (_finalReviewThumbnailsWindow.Items.Count > 0)
+            {
+                var pendingItems = _finalReviewThumbnailsWindow.Items.Where(item => item.Thumbnail is null).ToList();
+                if (pendingItems.Count > 0)
+                {
+                    StartFinalReviewThumbnailLazyLoading(pendingItems);
+                }
+            }
+            return;
+        }
+
+        await OpenFinalReviewThumbnailsWindowAsync();
+    }
+
+    private void ShowThumbnailsCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (_suppressShowThumbnailsCheckboxChange)
+        {
+            return;
+        }
+
+        CancelFinalReviewThumbnailLoading();
+        _finalReviewThumbnailsWindow?.Hide();
+    }
+
+    private void SetShowThumbnailsCheckBox(bool isChecked)
+    {
+        _suppressShowThumbnailsCheckboxChange = true;
+        ShowThumbnailsCheckBox.IsChecked = isChecked;
+        _suppressShowThumbnailsCheckboxChange = false;
     }
 
     private void LoadOriginalFilesList(string folderPath)
