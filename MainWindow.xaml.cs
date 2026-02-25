@@ -840,6 +840,20 @@ public partial class MainWindow : Window
             return;
         }
 
+        var status = statusButtonContext.ReviewStatus;
+        var flag = status.StatusFlag;
+        Debug.WriteLine(
+            "StatusBtton_Click: " +
+            $"FilePath='{statusButtonContext.FilePath}', " +
+            $"StatusType='{status.StatusType}', " +
+            $"Name='{flag.Name}', " +
+            $"Description='{flag.Description ?? string.Empty}', " +
+            $"ButtonTitle='{flag.ButtonTitle ?? string.Empty}', " +
+            $"TwoCharCode='{flag.TwoCharCode ?? string.Empty}', " +
+            $"Hotkey='{flag.Hotkey ?? string.Empty}', " +
+            $"Suffix='{flag.Suffix ?? string.Empty}', " +
+            $"Prefix='{flag.Prefix ?? string.Empty}'");
+
         await SetReviewStatusToCurrentImage(statusButtonContext.ReviewStatus, statusButtonContext.FilePath, null);
     }
 
