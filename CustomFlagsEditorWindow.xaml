@@ -1,0 +1,165 @@
+<Window x:Class="ReviewTool.CustomFlagsEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ReviewTool"
+        mc:Ignorable="d"
+        Title="Custom status flags"
+        Height="520"
+        Width="980"
+        MinHeight="420"
+        MinWidth="820"
+        Background="LightGray"
+        WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PipelineCardBackgroundBrush" Color="#2F3136"/>
+        <SolidColorBrush x:Key="PipelineCardBorderBrush" Color="#464A52"/>
+        <SolidColorBrush x:Key="PipelineTextBrush" Color="#E5E7EA"/>
+        <SolidColorBrush x:Key="PipelineTextboxBackgroundBrush" Color="#1E2024"/>
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#AAB0B7"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#1E66E0"/>
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}" />
+        </Style>
+
+        <Style x:Key="ElevatedRoundedButton" TargetType="Button">
+            <Setter Property="Background" Value="#2F3136"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="6,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border CornerRadius="6" Background="Transparent" Margin="0,2,0,0">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.2"/>
+                                </Border.Effect>
+                            </Border>
+                            <Border x:Name="bd"
+                                    CornerRadius="4"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.95"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.99" ScaleY="0.99"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DialogActionButton" TargetType="Button" BasedOn="{StaticResource ElevatedRoundedButton}">
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
+
+        <Style x:Key="DialogDangerButton" TargetType="Button" BasedOn="{StaticResource DialogActionButton}">
+            <Setter Property="Background" Value="#8A4A46"/>
+        </Style>
+
+        <Style x:Key="DialogPrimaryButton" TargetType="Button" BasedOn="{StaticResource DialogActionButton}">
+            <Setter Property="Background" Value="#3E6E3A"/>
+        </Style>
+
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="{StaticResource PipelineTextboxBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PipelineCardBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource PipelineCardBorderBrush}"/>
+            <Setter Property="VerticalGridLinesBrush" Value="{StaticResource PipelineCardBorderBrush}"/>
+            <Setter Property="RowBackground" Value="{StaticResource PipelineTextboxBackgroundBrush}"/>
+            <Setter Property="AlternatingRowBackground" Value="#24272D"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="{StaticResource PipelineCardBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PipelineCardBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="Padding" Value="6,5"/>
+        </Style>
+
+        <Style TargetType="DataGridRow">
+            <Setter Property="Foreground" Value="{StaticResource PipelineTextBrush}"/>
+            <Setter Property="Background" Value="{StaticResource PipelineTextboxBackgroundBrush}"/>
+        </Style>
+    </Window.Resources>
+
+    <Border Margin="12"
+            Padding="12"
+            Background="{StaticResource PipelineCardBackgroundBrush}"
+            BorderBrush="{StaticResource PipelineCardBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="6">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Custom Status Flags"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,10"/>
+
+        <DataGrid Grid.Row="1"
+                  x:Name="FlagsDataGrid"
+                  ItemsSource="{Binding Rows}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  HeadersVisibility="Column"
+                  SelectionMode="Single"
+                  SelectionUnit="FullRow">
+            <DataGrid.Columns>
+                <DataGridComboBoxColumn Header="Type"
+                                        Width="110"
+                                        SelectedItemBinding="{Binding StatusType, UpdateSourceTrigger=PropertyChanged}"
+                                        ItemsSource="{Binding Source={x:Static local:CustomFlagsEditorWindow.AvailableStatusTypes}}" />
+                <DataGridTextColumn Header="Name" Width="130" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                <DataGridTextColumn Header="ButtonTitle" Width="130" Binding="{Binding ButtonTitle, UpdateSourceTrigger=PropertyChanged}" />
+                <DataGridTextColumn Header="TwoCharCode" Width="110" Binding="{Binding TwoCharCode, UpdateSourceTrigger=PropertyChanged}" />
+                <DataGridTextColumn Header="Hotkey" Width="100" Binding="{Binding Hotkey, UpdateSourceTrigger=PropertyChanged}" />
+                <DataGridTextColumn Header="Suffix" Width="110" Binding="{Binding Suffix, UpdateSourceTrigger=PropertyChanged}" />
+                <DataGridTextColumn Header="Prefix" Width="130" Binding="{Binding Prefix, UpdateSourceTrigger=PropertyChanged}" />
+                <DataGridTextColumn Header="Description" Width="*" Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}" />
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <DockPanel Grid.Row="2" Margin="0,10,0,0" LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                <Button Style="{StaticResource DialogActionButton}" Content="Add" Width="90" Click="AddRow_Click" />
+                <Button Style="{StaticResource DialogDangerButton}" Content="Remove" Width="90" Click="RemoveRow_Click" />
+            </StackPanel>
+
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Style="{StaticResource DialogPrimaryButton}" Content="OK" Width="90" IsDefault="True" Click="Ok_Click" />
+                <Button Style="{StaticResource DialogActionButton}" Content="Cancel" Width="90" IsCancel="True" Margin="0" Click="Cancel_Click" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+    </Border>
+</Window>

@@ -476,22 +476,34 @@
                             </TextBlock.LayoutTransform>
                         </TextBlock>
                     </Expander.Header>
-                    <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding StatusButtons}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button Style="{StaticResource ActionCompactButton}"
-                                        Content="{Binding StatusFlag.ButtonTitle}"
-                                        Tag="{Binding}"
-                                        Margin="0,0,8,8"
-                                        Click="StatusBtton_Click" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <Grid Margin="0,6,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ItemsControl Grid.Row="0" ItemsSource="{Binding StatusButtons}" VerticalAlignment="Top">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource ActionCompactButton}"
+                                            Content="{Binding StatusFlag.ButtonTitle}"
+                                            Tag="{Binding}"
+                                            Margin="0,0,8,8"
+                                            Click="StatusBtton_Click" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Grid.Row="1"
+                                Style="{StaticResource ActionCompactButton}"
+                                Content="Add/Edit"
+                                Margin="0,8,8,0"
+                                VerticalAlignment="Bottom"
+                                Click="AddEditCustomFlags_Click" />
+                    </Grid>
                 </Expander>
             </Border>
         </Grid>

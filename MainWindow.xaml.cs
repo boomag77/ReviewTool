@@ -804,6 +804,30 @@ public partial class MainWindow : Window
         }
     }
 
+    private void AddEditCustomFlags_Click(object sender, RoutedEventArgs e)
+    {
+        var editorWindow = new CustomFlagsEditorWindow(_viewModel.CustomReviewStatuses)
+        {
+            Owner = this
+        };
+
+        if (editorWindow.ShowDialog() != true)
+        {
+            return;
+        }
+
+        if (_viewModel.TryReplaceCustomReviewStatuses(editorWindow.ResultStatuses, out var validationError))
+        {
+            return;
+        }
+
+        MessageBox.Show(this,
+                        validationError,
+                        "Custom statuses",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+    }
+
     private async void StatusBtton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement button)

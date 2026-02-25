@@ -7,6 +7,8 @@ namespace ReviewTool;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged
 {
+    private const int MaxCustomStatusesCount = 5;
+
     private BitmapSource? _originalImagePreview;
     private BitmapSource? _reviewingImagePreview;
     private string _originalImageLabel = "Original 0/0";
@@ -22,8 +24,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _targetFolderDisplayPath = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
-
-    const int _maxCustomStatusesCount = 5;
 
     private HashSet<string> _statusFlagNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _statusFlagTwoCharCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -84,6 +84,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     };
     public ReadOnlyObservableCollection<ReviewStatus> StatusButtons { get; }
     public ReadOnlyObservableCollection<ReviewStatus> CustomReviewStatuses { get; }
+    public int MaxCustomStatuses => MaxCustomStatusesCount;
 
 
     public MainWindowViewModel()
@@ -123,6 +124,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void InitializeReviewStatuses()
     {
+        _statusFlagNames.Clear();
+        _statusFlagTwoCharCodes.Clear();
+        _statusFlagHotkeys.Clear();
+        _statusFlagSuffixes.Clear();
+        _statusFlagPrefixes.Clear();
+        _statusFlagButtonTitles.Clear();
+
         foreach (var status in _requiredReviewStatuses)
         {
             if (!string.IsNullOrEmpty(status.StatusFlag.Name))
@@ -216,7 +224,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public bool TryAddCustomReviewStatus(ReviewStatus reviewStatus)
     {
-        if (_customReviewStatuses.Count >= _maxCustomStatusesCount || IsDuplicateStatusFlag(reviewStatus.StatusFlag))
+        if (_customReviewStatuses.Count >= MaxCustomStatusesCount || IsDuplicateStatusFlag(reviewStatus.StatusFlag))
         {
             return false;
         }
@@ -243,9 +251,100 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             }
             
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CustomReviewStatuses)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusButtons)));
-            return ok;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusButtons)));
+        return ok;
+    }
+
+    public bool TryReplaceCustomReviewStatuses(IReadOnlyList<ReviewStatus> reviewStatuses, out string validationError)
+    {
+        validationError = string.Empty;
+
+        if (reviewStatuses.Count > MaxCustomStatusesCount)
+        {
+            validationError = $"Custom statuses limit is {MaxCustomStatusesCount}.";
+            return false;
         }
+
+        var nextNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var nextCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var nextHotkeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var nextSuffixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var nextPrefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var nextButtonTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void FillSnapshotFlagCollections(ReviewStatusFlag flag)
+        {
+            if (!string.IsNullOrEmpty(flag.Name))
+            {
+                nextNames.Add(flag.Name);
+            }
+            if (!string.IsNullOrEmpty(flag.TwoCharCode))
+            {
+                nextCodes.Add(flag.TwoCharCode);
+            }
+            if (!string.IsNullOrEmpty(flag.Hotkey))
+            {
+                nextHotkeys.Add(flag.Hotkey);
+            }
+            if (!string.IsNullOrEmpty(flag.Suffix))
+            {
+                nextSuffixes.Add(flag.Suffix);
+            }
+            if (!string.IsNullOrEmpty(flag.Prefix))
+            {
+                nextPrefixes.Add(flag.Prefix);
+            }
+            if (!string.IsNullOrEmpty(flag.ButtonTitle))
+            {
+                nextButtonTitles.Add(flag.ButtonTitle);
+            }
+        }
+
+        foreach (var requiredStatus in _requiredReviewStatuses)
+        {
+            FillSnapshotFlagCollections(requiredStatus.StatusFlag);
+        }
+
+        foreach (var reviewStatus in reviewStatuses)
+        {
+            var flag = reviewStatus.StatusFlag;
+
+            var hasDuplicate =
+                (!string.IsNullOrEmpty(flag.Name) && nextNames.Contains(flag.Name)) ||
+                (!string.IsNullOrEmpty(flag.TwoCharCode) && nextCodes.Contains(flag.TwoCharCode)) ||
+                (!string.IsNullOrEmpty(flag.Hotkey) && nextHotkeys.Contains(flag.Hotkey)) ||
+                (!string.IsNullOrEmpty(flag.Suffix) && nextSuffixes.Contains(flag.Suffix)) ||
+                (!string.IsNullOrEmpty(flag.Prefix) && nextPrefixes.Contains(flag.Prefix)) ||
+                (!string.IsNullOrEmpty(flag.ButtonTitle) && nextButtonTitles.Contains(flag.ButtonTitle));
+
+            if (hasDuplicate)
+            {
+                var statusName = string.IsNullOrWhiteSpace(flag.Name) ? "(unnamed)" : flag.Name;
+                validationError = $"Duplicate custom status flag values for '{statusName}'.";
+                return false;
+            }
+
+            FillSnapshotFlagCollections(flag);
+        }
+
+        _customReviewStatuses.Clear();
+        foreach (var reviewStatus in reviewStatuses)
+        {
+            _customReviewStatuses.Add(reviewStatus);
+        }
+
+        _statusFlagNames = nextNames;
+        _statusFlagTwoCharCodes = nextCodes;
+        _statusFlagHotkeys = nextHotkeys;
+        _statusFlagSuffixes = nextSuffixes;
+        _statusFlagPrefixes = nextPrefixes;
+        _statusFlagButtonTitles = nextButtonTitles;
+
+        RebuildStatusButtons();
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CustomReviewStatuses)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusButtons)));
+        return true;
+    }
 
 
     public BitmapSource? OriginalImagePreview
