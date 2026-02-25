@@ -23,10 +23,13 @@ internal sealed class FinalReviewProcessor
         _thumbnailHeightPx = Math.Max(MinThumbnailHeightPx, thumbnailHeightPx);
     }
 
-    public List<FinalReviewThumbnailItem> BuildThumbnailItems(IReadOnlyList<string> imagePaths)
+    public FinalReviewThumbnailIndex BuildThumbnailIndex(IReadOnlyList<string> imagePaths,
+                                                         IReadOnlyList<ReviewStatus> availableStatuses)
     {
         _imagePathByThumbnailIndex.Clear();
+        var statusAffixes = BuildStatusAffixes(availableStatuses);
         var thumbnailItems = new List<FinalReviewThumbnailItem>(imagePaths.Count);
+        var detectedFlagCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < imagePaths.Count; index++)
         {
             var imagePath = imagePaths[index];
@@ -35,17 +38,47 @@ internal sealed class FinalReviewProcessor
                 continue;
             }
 
+            var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(imagePath);
+            var matchedFlagName = DetectFlagNameFromFileName(fileNameWithoutExtension, statusAffixes);
             _imagePathByThumbnailIndex[index] = imagePath;
             thumbnailItems.Add(new FinalReviewThumbnailItem
             {
                 Index = index,
-                Label = System.IO.Path.GetFileNameWithoutExtension(imagePath),
+                Label = fileNameWithoutExtension,
                 FilePath = imagePath,
-                Thumbnail = null
+                Thumbnail = null,
+                FlagName = matchedFlagName
+            });
+
+            if (!string.IsNullOrWhiteSpace(matchedFlagName))
+            {
+                detectedFlagCounts.TryGetValue(matchedFlagName, out var count);
+                detectedFlagCounts[matchedFlagName] = count + 1;
+            }
+        }
+
+        var filters = new List<FinalReviewThumbnailFilterItem>
+        {
+            new FinalReviewThumbnailFilterItem
+            {
+                FlagName = null,
+                ButtonLabel = $"All ({thumbnailItems.Count})"
+            }
+        };
+        foreach (var kv in detectedFlagCounts.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            filters.Add(new FinalReviewThumbnailFilterItem
+            {
+                FlagName = kv.Key,
+                ButtonLabel = $"{kv.Key} ({kv.Value})"
             });
         }
 
-        return thumbnailItems;
+        return new FinalReviewThumbnailIndex
+        {
+            Items = thumbnailItems,
+            Filters = filters
+        };
     }
 
     public Task<BitmapSource?> LoadBitmapForThumbnailIndexAsync(int thumbnailIndex, CancellationToken cancellationToken)
@@ -160,4 +193,101 @@ internal sealed class FinalReviewProcessor
         return imagePathSpan.EndsWith(".tif", StringComparison.OrdinalIgnoreCase) ||
            imagePathSpan.EndsWith(".tiff", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static List<StatusAffix> BuildStatusAffixes(IReadOnlyList<ReviewStatus> availableStatuses)
+    {
+        var affixes = new List<StatusAffix>(availableStatuses.Count);
+        foreach (var status in availableStatuses)
+        {
+            var flagName = status.StatusFlag.Name?.Trim();
+            if (string.IsNullOrWhiteSpace(flagName))
+            {
+                continue;
+            }
+
+            var prefixToken = NormalizeAffixToken(status.StatusFlag.Prefix);
+            var suffixToken = NormalizeAffixToken(status.StatusFlag.Suffix);
+            if (string.IsNullOrWhiteSpace(prefixToken) && string.IsNullOrWhiteSpace(suffixToken))
+            {
+                continue;
+            }
+
+            affixes.Add(new StatusAffix(flagName, prefixToken, suffixToken));
+        }
+
+        return affixes;
+    }
+
+    private static string? DetectFlagNameFromFileName(string fileNameWithoutExtension, IReadOnlyList<StatusAffix> statusAffixes)
+    {
+        if (string.IsNullOrWhiteSpace(fileNameWithoutExtension))
+        {
+            return null;
+        }
+
+        foreach (var affix in statusAffixes)
+        {
+            if (IsMatchByAffix(fileNameWithoutExtension, affix))
+            {
+                return affix.FlagName;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsMatchByAffix(string fileNameWithoutExtension, StatusAffix affix)
+    {
+        var fileNameSpan = fileNameWithoutExtension.AsSpan();
+        if (!string.IsNullOrWhiteSpace(affix.PrefixToken))
+        {
+            var withSeparator = string.Concat(affix.PrefixToken, "_").AsSpan();
+            if (fileNameSpan.StartsWith(withSeparator, StringComparison.OrdinalIgnoreCase)
+                || fileNameSpan.StartsWith(affix.PrefixToken.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(affix.SuffixToken))
+        {
+            var withSeparator = string.Concat("_", affix.SuffixToken).AsSpan();
+            if (fileNameSpan.EndsWith(withSeparator, StringComparison.OrdinalIgnoreCase)
+                || fileNameSpan.EndsWith(affix.SuffixToken.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeAffixToken(string? rawToken)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken))
+        {
+            return string.Empty;
+        }
+
+        var token = rawToken.Trim();
+        while (token.Length > 0 && (token[0] == '_' || token[0] == '-' || token[0] == ' '))
+        {
+            token = token[1..];
+        }
+
+        while (token.Length > 0 && (token[^1] == '_' || token[^1] == '-' || token[^1] == ' '))
+        {
+            token = token[..^1];
+        }
+
+        return token;
+    }
+
+    private readonly record struct StatusAffix(string FlagName, string PrefixToken, string SuffixToken);
+}
+
+internal sealed class FinalReviewThumbnailIndex
+{
+    public List<FinalReviewThumbnailItem> Items { get; init; } = new();
+    public List<FinalReviewThumbnailFilterItem> Filters { get; init; } = new();
 }

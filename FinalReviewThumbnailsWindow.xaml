@@ -82,37 +82,83 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="ThumbnailFilterButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="Margin" Value="0,0,6,6"/>
+            <Setter Property="Background" Value="#1A1F27"/>
+            <Setter Property="Foreground" Value="#E5E7EA"/>
+            <Setter Property="BorderBrush" Value="#2A2F38"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <Setter Property="Background" Value="#1E66E0"/>
+                    <Setter Property="BorderBrush" Value="#3B82F6"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
     <Grid Margin="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <StackPanel Orientation="Horizontal" Margin="4,2,4,8">
-            <TextBlock Text="Thumb size"
-                       VerticalAlignment="Center"
-                       Margin="0,0,8,0"
-                       Foreground="#F1F4F8"/>
-            <Slider x:Name="ThumbnailSizeSlider"
-                    Style="{StaticResource ThumbSizeSliderStyle}"
-                    Width="180"
-                    Minimum="72"
-                    Maximum="160"
-                    Value="104"
-                    TickFrequency="8"
-                    IsSnapToTickEnabled="True"
-                    ValueChanged="ThumbnailSizeSlider_ValueChanged"/>
-            <TextBlock Text="Max"
-                       VerticalAlignment="Center"
-                       Margin="10,0,6,0"
-                       Foreground="#F1F4F8"/>
-            <TextBox x:Name="ThumbnailMaxSizeTextBox"
-                     Style="{StaticResource RoundedMaxSizeTextBoxStyle}"
-                     Width="46"
-                     Text="160"
-                     TextAlignment="Right"
-                     LostFocus="ThumbnailMaxSizeTextBox_LostFocus"
-                     KeyDown="ThumbnailMaxSizeTextBox_KeyDown"/>
+        <StackPanel Margin="4,2,4,8">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Thumb size"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"
+                           Foreground="#F1F4F8"/>
+                <Slider x:Name="ThumbnailSizeSlider"
+                        Style="{StaticResource ThumbSizeSliderStyle}"
+                        Width="180"
+                        Minimum="72"
+                        Maximum="160"
+                        Value="104"
+                        TickFrequency="8"
+                        IsSnapToTickEnabled="True"
+                        ValueChanged="ThumbnailSizeSlider_ValueChanged"/>
+                <TextBlock Text="Max"
+                           VerticalAlignment="Center"
+                           Margin="10,0,6,0"
+                           Foreground="#F1F4F8"/>
+                <TextBox x:Name="ThumbnailMaxSizeTextBox"
+                         Style="{StaticResource RoundedMaxSizeTextBoxStyle}"
+                         Width="46"
+                         Text="160"
+                         TextAlignment="Right"
+                         LostFocus="ThumbnailMaxSizeTextBox_LostFocus"
+                         KeyDown="ThumbnailMaxSizeTextBox_KeyDown"/>
+            </StackPanel>
+            <ItemsControl x:Name="FiltersItemsControl" Margin="0,8,0,0">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type local:FinalReviewThumbnailFilterItem}">
+                        <Button Style="{StaticResource ThumbnailFilterButtonStyle}"
+                                Content="{Binding ButtonLabel}"
+                                Tag="{Binding ButtonTag}"
+                                Click="FilterButton_Click" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </StackPanel>
         <ListBox x:Name="ThumbnailsList"
                  Grid.Row="1"

@@ -2634,15 +2634,17 @@ public partial class MainWindow : Window
         _finalReviewThumbnailsWindow.Show();
 
         var sourceImagePaths = BuildFinalReviewSourceImagePaths();
+        var availableStatuses = BuildFinalReviewAvailableStatuses();
         _finalReviewProcessor.SetThumbnailHeight(_finalReviewThumbnailHeightPx);
-        var thumbnailItems = _finalReviewProcessor.BuildThumbnailItems(sourceImagePaths);
+        var thumbnailIndex = _finalReviewProcessor.BuildThumbnailIndex(sourceImagePaths, availableStatuses);
         if (_finalReviewThumbnailsWindow is null)
         {
             return Task.CompletedTask;
         }
 
-        _finalReviewThumbnailsWindow.SetItems(thumbnailItems);
-        StartFinalReviewThumbnailLazyLoading(thumbnailItems);
+        _finalReviewThumbnailsWindow.SetItems(thumbnailIndex.Items);
+        _finalReviewThumbnailsWindow.SetFilters(thumbnailIndex.Filters);
+        StartFinalReviewThumbnailLazyLoading(thumbnailIndex.Items);
         return Task.CompletedTask;
     }
 
@@ -2854,6 +2856,14 @@ public partial class MainWindow : Window
         }
 
         return imagePaths;
+    }
+
+    private List<ReviewStatus> BuildFinalReviewAvailableStatuses()
+    {
+        var statuses = new List<ReviewStatus>(_viewModel.RequiredReviewStatuses.Count + _viewModel.CustomReviewStatuses.Count);
+        statuses.AddRange(_viewModel.RequiredReviewStatuses);
+        statuses.AddRange(_viewModel.CustomReviewStatuses);
+        return statuses;
     }
 
     private async void ShowThumbnailsCheckBox_Checked(object sender, RoutedEventArgs e)

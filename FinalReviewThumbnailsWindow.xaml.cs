@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media.Imaging;
 
 namespace ReviewTool;
@@ -17,6 +18,9 @@ public partial class FinalReviewThumbnailsWindow : Window
     private const int MaxThumbnailSizePx = 320;
 
     public ObservableCollection<FinalReviewThumbnailItem> Items { get; } = new();
+    public ObservableCollection<FinalReviewThumbnailFilterItem> Filters { get; } = new();
+    private ICollectionView? _itemsView;
+    private string? _activeFilterFlagName;
 
     public double ThumbnailTileWidth
     {
@@ -58,6 +62,9 @@ public partial class FinalReviewThumbnailsWindow : Window
     {
         InitializeComponent();
         ThumbnailsList.ItemsSource = Items;
+        FiltersItemsControl.ItemsSource = Filters;
+        _itemsView = CollectionViewSource.GetDefaultView(Items);
+        _itemsView.Filter = FilterThumbnailItem;
         ApplyThumbnailMetrics((int)Math.Round(ThumbnailSizeSlider.Value, MidpointRounding.AwayFromZero));
         SetThumbnailMaxSize((int)Math.Round(ThumbnailSizeSlider.Maximum, MidpointRounding.AwayFromZero));
     }
@@ -69,6 +76,25 @@ public partial class FinalReviewThumbnailsWindow : Window
         {
             Items.Add(item);
         }
+
+        _itemsView?.Refresh();
+    }
+
+    public void SetFilters(IEnumerable<FinalReviewThumbnailFilterItem> filters)
+    {
+        Filters.Clear();
+        foreach (var filter in filters)
+        {
+            Filters.Add(filter);
+        }
+
+        if (Filters.Count == 0)
+        {
+            _activeFilterFlagName = null;
+            return;
+        }
+
+        SetActiveFilter(Filters[0].FlagName);
     }
 
     private void ThumbnailsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -178,6 +204,48 @@ public partial class FinalReviewThumbnailsWindow : Window
         ThumbnailMaxSizeChanged?.Invoke(ThumbnailMaxSize);
     }
 
+    private void FilterButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.Tag is not string tagValue)
+        {
+            return;
+        }
+
+        var filterFlagName = string.Equals(tagValue, "__all__", StringComparison.Ordinal)
+            ? null
+            : tagValue;
+        SetActiveFilter(filterFlagName);
+    }
+
+    private void SetActiveFilter(string? filterFlagName)
+    {
+        _activeFilterFlagName = filterFlagName;
+        foreach (var filter in Filters)
+        {
+            var isActive = string.IsNullOrWhiteSpace(_activeFilterFlagName)
+                ? string.IsNullOrWhiteSpace(filter.FlagName)
+                : string.Equals(filter.FlagName, _activeFilterFlagName, StringComparison.OrdinalIgnoreCase);
+            filter.IsActive = isActive;
+        }
+
+        _itemsView?.Refresh();
+    }
+
+    private bool FilterThumbnailItem(object obj)
+    {
+        if (obj is not FinalReviewThumbnailItem item)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_activeFilterFlagName))
+        {
+            return true;
+        }
+
+        return string.Equals(item.FlagName, _activeFilterFlagName, StringComparison.OrdinalIgnoreCase);
+    }
+
     private void ApplyThumbnailMetrics(int thumbnailHeightPx)
     {
         ThumbnailTileHeight = thumbnailHeightPx;
@@ -197,6 +265,34 @@ public sealed class FinalReviewThumbnailItem : INotifyPropertyChanged
         set => SetField(ref _thumbnail, value);
     }
     public string FilePath { get; init; } = string.Empty;
+    public string? FlagName { get; init; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+
+public sealed class FinalReviewThumbnailFilterItem : INotifyPropertyChanged
+{
+    private bool _isActive;
+    public string? FlagName { get; init; }
+    public string ButtonLabel { get; init; } = string.Empty;
+    public bool IsActive
+    {
+        get => _isActive;
+        set => SetField(ref _isActive, value);
+    }
+
+    public string ButtonTag => string.IsNullOrWhiteSpace(FlagName) ? "__all__" : FlagName;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
