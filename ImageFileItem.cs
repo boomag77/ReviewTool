@@ -107,9 +107,12 @@ public sealed class ImageFileItem : INotifyPropertyChanged
         {
             field = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(StatusCode));
             OnPropertyChanged(nameof(StatusBrush));
         }
     }
+
+    public string StatusCode => Status.StatusFlag.TwoCharCode ?? string.Empty;
 
     public Brush StatusBrush =>
         Status.StatusType switch

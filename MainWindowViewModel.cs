@@ -346,6 +346,51 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         return true;
     }
 
+    public bool TryGetRequiredReviewStatus(ReviewStatusType statusType, out ReviewStatus reviewStatus)
+    {
+        foreach (var status in _requiredReviewStatuses)
+        {
+            if (status.StatusType == statusType)
+            {
+                reviewStatus = status;
+                return true;
+            }
+        }
+
+        reviewStatus = default;
+        return false;
+    }
+
+    public bool TryGetReviewStatusByFlagName(string flagName, out ReviewStatus reviewStatus)
+    {
+        if (string.IsNullOrWhiteSpace(flagName))
+        {
+            reviewStatus = default;
+            return false;
+        }
+
+        foreach (var status in _requiredReviewStatuses)
+        {
+            if (string.Equals(status.StatusFlag.Name, flagName, StringComparison.OrdinalIgnoreCase))
+            {
+                reviewStatus = status;
+                return true;
+            }
+        }
+
+        foreach (var status in _customReviewStatuses)
+        {
+            if (string.Equals(status.StatusFlag.Name, flagName, StringComparison.OrdinalIgnoreCase))
+            {
+                reviewStatus = status;
+                return true;
+            }
+        }
+
+        reviewStatus = default;
+        return false;
+    }
+
 
     public BitmapSource? OriginalImagePreview
     {
