@@ -51,3 +51,5 @@ ImgViewer/Models/ML/model.data
 
 #docs
 *.md
+
+/obj_codex/

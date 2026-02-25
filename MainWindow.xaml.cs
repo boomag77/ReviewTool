@@ -58,6 +58,7 @@ public partial class MainWindow : Window
     private readonly MainWindowViewModel _viewModel = new();
     private readonly InitialReviewProcessor _initialReviewProcessor;
     private readonly FileProcessor _fileProcessor = new();
+    private readonly FinalReviewProcessor _finalReviewProcessor;
 
     private readonly CurrentFolderIndex _originalFolderIndex;
     private readonly CurrentFolderIndex _processedFolderIndex;
@@ -81,6 +82,8 @@ public partial class MainWindow : Window
     private bool _autoFillInProgress;
     private int _lastHandledIndex = -1;
     private bool _transitionInProgress;
+    private FinalReviewThumbnailsWindow? _finalReviewThumbnailsWindow;
+    private CancellationTokenSource? _finalReviewThumbnailLoadCts;
 
     private string _originalFolderPath = string.Empty;
 
@@ -97,6 +100,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _initialReviewProcessor = new InitialReviewProcessor(_viewModel);
+        _finalReviewProcessor = new FinalReviewProcessor(_fileProcessor);
         DataContext = _viewModel;
         TryLoadPersistedReviewStatuses();
         Loaded += (_, _) => Keyboard.Focus(this);
@@ -108,6 +112,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        CloseFinalReviewThumbnailsWindow();
         _processedFolderIndexCts?.Cancel();
         _originalFolderIndexCts?.Cancel();
         base.OnClosing(e);
@@ -157,20 +162,13 @@ public partial class MainWindow : Window
             _viewModel.FinalReviewButtonText = "Start Final Review...";
             return;
         }
-
-        var processedFolder = SelectFolder("Select processed images folder");
-        if (string.IsNullOrWhiteSpace(processedFolder))
-        {
-            _isFinalReview = false;
-            _viewModel.FinalReviewButtonText = "Start Final Review...";
-            return;
-        }
-        await Task.WhenAll(
-                BuildFoldersIndexesAsync(originalFolder, isOriginal: true),
-                BuildFoldersIndexesAsync(processedFolder, isOriginal: false)
-            );
+        await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
+        ResetProcessedIndex();
         _currentImageIndex = 0;
-        await AdvanceToIndexAsync(_currentImageIndex);
+        _viewModel.OriginalImagePreview = null;
+        _viewModel.ReviewingImagePreview = null;
+        UpdatePreviewLabels();
+        await OpenFinalReviewThumbnailsWindowAsync();
         FocusWindowForInputDeferred();
     }
 
@@ -636,6 +634,7 @@ public partial class MainWindow : Window
 
     private void FinishFinalReview()
     {
+        CloseFinalReviewThumbnailsWindow();
         ClearReviewState(clearProcessed: true);
         _isFinalReview = false;
         _viewModel.FinalReviewButtonText = "Start Final Review...";
@@ -2364,7 +2363,9 @@ public partial class MainWindow : Window
         {
             return;
         }
-        var maxIndex = Math.Max(_originalFolderIndex.LastIndex, _processedFolderIndex.LastIndex);
+        var maxIndex = _isFinalReview
+            ? _originalFolderIndex.LastIndex
+            : Math.Max(_originalFolderIndex.LastIndex, _processedFolderIndex.LastIndex);
         if (maxIndex < 0)
         {
             return;
@@ -2491,16 +2492,32 @@ public partial class MainWindow : Window
     {
         TraceInput($"UpdatePreviewImagesAsync start idx={_currentImageIndex}");
         var currIdx = _currentImageIndex;
-        var task1 = Task.Run(() => LoadBitmapForIndex(_originalFolderIndex, currIdx));
-        var task2 = Task.Run(() => LoadBitmapForIndex(_processedFolderIndex, currIdx));
-        var bitmaps = await Task.WhenAll(task1, task2);
-        if (currIdx != _currentImageIndex)
+        if (_isFinalReview)
         {
-            TraceInput($"UpdatePreviewImagesAsync stale idx={currIdx} current={_currentImageIndex}");
-            return;
+            var bitmap = await Task.Run(() => LoadBitmapForIndex(_originalFolderIndex, currIdx));
+            if (currIdx != _currentImageIndex)
+            {
+                TraceInput($"UpdatePreviewImagesAsync stale idx={currIdx} current={_currentImageIndex}");
+                return;
+            }
+
+            _viewModel.OriginalImagePreview = bitmap;
+            _viewModel.ReviewingImagePreview = bitmap;
         }
-        _viewModel.OriginalImagePreview = bitmaps[0];
-        _viewModel.ReviewingImagePreview = bitmaps[1];
+        else
+        {
+            var task1 = Task.Run(() => LoadBitmapForIndex(_originalFolderIndex, currIdx));
+            var task2 = Task.Run(() => LoadBitmapForIndex(_processedFolderIndex, currIdx));
+            var bitmaps = await Task.WhenAll(task1, task2);
+            if (currIdx != _currentImageIndex)
+            {
+                TraceInput($"UpdatePreviewImagesAsync stale idx={currIdx} current={_currentImageIndex}");
+                return;
+            }
+
+            _viewModel.OriginalImagePreview = bitmaps[0];
+            _viewModel.ReviewingImagePreview = bitmaps[1];
+        }
 
         UpdatePreviewLabels();
         TraceInput($"UpdatePreviewImagesAsync end idx={_currentImageIndex}");
@@ -2533,7 +2550,9 @@ public partial class MainWindow : Window
     private void UpdatePreviewLabels()
     {
         _viewModel.OriginalImageLabel = BuildLabel("Original", _originalFolderIndex);
-        _viewModel.ReviewingImageLabel = BuildLabel("Processed", _processedFolderIndex);
+        _viewModel.ReviewingImageLabel = _isFinalReview
+            ? BuildLabel("Processed", _originalFolderIndex)
+            : BuildLabel("Processed", _processedFolderIndex);
         TotalImagesToReview = Math.Max(0, _originalFolderIndex.LastIndex + 1);
     }
 
@@ -2548,6 +2567,7 @@ public partial class MainWindow : Window
 
     private void ClearReviewState(bool clearProcessed)
     {
+        CloseFinalReviewThumbnailsWindow();
         _originalFolderIndexCts?.Cancel();
         _originalFolderIndexCts = null;
         _originalFolderIndex.ClearIndex();
@@ -2561,6 +2581,152 @@ public partial class MainWindow : Window
         _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>();
         _viewModel.SelectedOriginalFile = null;
         UpdatePreviewLabels();
+    }
+
+    private Task OpenFinalReviewThumbnailsWindowAsync()
+    {
+        if (!_isFinalReview)
+        {
+            return Task.CompletedTask;
+        }
+
+        CloseFinalReviewThumbnailsWindow();
+
+        _finalReviewThumbnailsWindow = new FinalReviewThumbnailsWindow
+        {
+            Owner = this
+        };
+        _finalReviewThumbnailsWindow.ThumbnailSelected += FinalReviewThumbnailsWindow_ThumbnailSelected;
+        _finalReviewThumbnailsWindow.Show();
+
+        var sourceImagePaths = BuildFinalReviewSourceImagePaths();
+        var thumbnailItems = _finalReviewProcessor.BuildThumbnailItems(sourceImagePaths);
+        if (_finalReviewThumbnailsWindow is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _finalReviewThumbnailsWindow.SetItems(thumbnailItems);
+        StartFinalReviewThumbnailLazyLoading(thumbnailItems);
+        return Task.CompletedTask;
+    }
+
+    private void CloseFinalReviewThumbnailsWindow()
+    {
+        CancelFinalReviewThumbnailLoading();
+        if (_finalReviewThumbnailsWindow is null)
+        {
+            return;
+        }
+
+        _finalReviewThumbnailsWindow.ThumbnailSelected -= FinalReviewThumbnailsWindow_ThumbnailSelected;
+        _finalReviewThumbnailsWindow.Close();
+        _finalReviewThumbnailsWindow = null;
+    }
+
+    private void StartFinalReviewThumbnailLazyLoading(IReadOnlyList<FinalReviewThumbnailItem> thumbnailItems)
+    {
+        CancelFinalReviewThumbnailLoading();
+        if (_finalReviewThumbnailsWindow is null || thumbnailItems.Count == 0)
+        {
+            return;
+        }
+
+        var loadingCts = new CancellationTokenSource();
+        _finalReviewThumbnailLoadCts = loadingCts;
+        var cancellationToken = loadingCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            foreach (var thumbnailItem in thumbnailItems)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                BitmapSource? thumbnailBitmap;
+                try
+                {
+                    thumbnailBitmap = await _finalReviewProcessor
+                        .LoadThumbnailForThumbnailIndexAsync(thumbnailItem.Index, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Failed to lazy-load thumbnail for index {thumbnailItem.Index}: {ex.Message}");
+                    continue;
+                }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                try
+                {
+                    await Dispatcher.InvokeAsync(
+                        () =>
+                        {
+                            if (!cancellationToken.IsCancellationRequested)
+                            {
+                                thumbnailItem.Thumbnail = thumbnailBitmap;
+                            }
+                        },
+                        DispatcherPriority.Background);
+                }
+                catch (TaskCanceledException)
+                {
+                    return;
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }, cancellationToken);
+    }
+
+    private void CancelFinalReviewThumbnailLoading()
+    {
+        _finalReviewThumbnailLoadCts?.Cancel();
+        _finalReviewThumbnailLoadCts?.Dispose();
+        _finalReviewThumbnailLoadCts = null;
+    }
+
+    private async void FinalReviewThumbnailsWindow_ThumbnailSelected(int index)
+    {
+        var bitmap = await _finalReviewProcessor.LoadBitmapForThumbnailIndexAsync(index, CancellationToken.None);
+        _currentImageIndex = index;
+        _viewModel.OriginalImagePreview = bitmap;
+        _viewModel.ReviewingImagePreview = bitmap;
+        UpdatePreviewLabels();
+    }
+
+    private List<string> BuildFinalReviewSourceImagePaths()
+    {
+        var imagePaths = new List<string>();
+        var maxIndex = _originalFolderIndex.LastIndex;
+        if (maxIndex < 0)
+        {
+            return imagePaths;
+        }
+
+        for (var index = 0; index <= maxIndex; index++)
+        {
+            _originalFolderIndex.TryGetFilePathForIndex(index, out var originalPath);
+            if (string.IsNullOrWhiteSpace(originalPath))
+            {
+                continue;
+            }
+
+            imagePaths.Add(originalPath);
+        }
+
+        return imagePaths;
     }
 
     private void LoadOriginalFilesList(string folderPath)
@@ -2792,31 +2958,6 @@ public partial class MainWindow : Window
         return $"{name} {current}/{count}";
     }
 
-    private void SetImageFromIndex(CurrentFolderIndex index, Image target)
-    {
-        if (!index.TryGetFilePathForIndex(_currentImageIndex, out var imagePath))
-        {
-            target.Source = null;
-            return;
-        }
-
-        target.Source = null;
-        try
-        {
-            target.Source = _fileProcessor.LoadBitmapImage(imagePath);
-        }
-        catch (IOException ex)
-        {
-            target.Source = null;
-            //MessageBox.Show(this, $"Failed to load image:\n{ex.Message}", "Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            target.Source = null;
-            //MessageBox.Show(this, $"Failed to load image:\n{ex.Message}", "Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
     private sealed class CurrentFolderIndex
     {
         private readonly MainWindow _owner;
@@ -2827,38 +2968,12 @@ public partial class MainWindow : Window
 
         private readonly object _lock = new object();
 
-        private Queue<int> _cachedIndices = new Queue<int>();
-        private Queue<BitmapSource> _cachedImages = new Queue<BitmapSource>();
-
-        public int CachedFileIndex
-        {
-            get
-            {
-                lock (_lock)
-                    return _cachedFileIndex;
-            }
-            set
-            {
-                lock (_lock)
-                    _cachedFileIndex = value;
-            }
-        }
-
         public int LastIndex
         {
             get
             {
                 var index = _folderIndex;
                 return index.Count - 1;
-            }
-        }
-
-        public string CachedDirectory
-        {
-            get
-            {
-                lock (_lock)
-                    return _cachedDirectory;
             }
         }
 
