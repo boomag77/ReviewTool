@@ -66,7 +66,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _processedFolderIndexCts;
     private int _currentImageIndex;
     private bool _isInitialReview;
-    private bool _isReview;
+    private ReviewMode? _activeReviewMode;
     private string? _initialReviewFolder;
     private bool _suppressFileSelection;
     private MagnifierAdorner? _magnifierAdorner;
@@ -146,25 +146,25 @@ public partial class MainWindow : Window
 
     private async Task StartReviewAsync()
     {
-        if (_isReview)
+        if (_activeReviewMode == ReviewMode.Review)
         {
             FinishReview();
             return;
         }
 
         _isInitialReview = false;
-        _isReview = true;
+        _activeReviewMode = ReviewMode.Review;
         _initialReviewFolder = null;
         _viewModel.IsInitialReview = false;
-        _viewModel.IsReview = true;
+        _viewModel.ActiveReviewMode = ReviewMode.Review;
         _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>();
         _viewModel.SelectedOriginalFile = null;
         _viewModel.ReviewButtonText = "Finish Review";
         var originalFolder = SelectFolder("Select original images folder");
         if (string.IsNullOrWhiteSpace(originalFolder))
         {
-            _isReview = false;
-            _viewModel.IsReview = false;
+            _activeReviewMode = null;
+            _viewModel.ActiveReviewMode = null;
             _viewModel.ReviewButtonText = "Start Review...";
             return;
         }
@@ -238,9 +238,9 @@ public partial class MainWindow : Window
         var imageFilesDigitsNumber = _fileProcessor.GetMaxDigitsInImageFiles(originalFolder);
 
         _isInitialReview = true;
-        _isReview = false;
+        _activeReviewMode = ReviewMode.InitialReview;
         _viewModel.IsInitialReview = true;
-        _viewModel.IsReview = false;
+        _viewModel.ActiveReviewMode = ReviewMode.InitialReview;
         _viewModel.InitialReviewButtonText = "Finish Initial Review";
         _viewModel.ReviewButtonText = "Start Review...";
         SetShowThumbnailsCheckBox(false);
@@ -330,8 +330,10 @@ public partial class MainWindow : Window
 
         ClearReviewState(clearProcessed: true);
         _isInitialReview = false;
+        _activeReviewMode = null;
         _initialReviewFolder = null;
         _viewModel.IsInitialReview = false;
+        _viewModel.ActiveReviewMode = null;
         _viewModel.TargetFolderDisplayPath = string.Empty;
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
         _lastSuggestedNumber = null;
@@ -344,11 +346,11 @@ public partial class MainWindow : Window
         _capturedMappingInfo.Clear();
         ClearReviewState(clearProcessed: true);
         _isInitialReview = false;
-        _isReview = false;
+        _activeReviewMode = null;
         _initialReviewFolder = null;
         _originalFolderPath = string.Empty;
         _viewModel.IsInitialReview = false;
-        _viewModel.IsReview = false;
+        _viewModel.ActiveReviewMode = null;
         _viewModel.TargetFolderDisplayPath = string.Empty;
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
         _viewModel.ReviewButtonText = "Start Review...";
@@ -649,8 +651,8 @@ public partial class MainWindow : Window
         SetShowThumbnailsCheckBox(false);
         CloseReviewThumbnailsWindow();
         ClearReviewState(clearProcessed: true);
-        _isReview = false;
-        _viewModel.IsReview = false;
+        _activeReviewMode = null;
+        _viewModel.ActiveReviewMode = null;
         _viewModel.ReviewButtonText = "Start Review...";
         MessageBox.Show(this, "Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
     }
@@ -2392,7 +2394,7 @@ public partial class MainWindow : Window
         {
             return;
         }
-        var maxIndex = _isReview
+        var maxIndex = _activeReviewMode == ReviewMode.Review
             ? _originalFolderIndex.LastIndex
             : Math.Max(_originalFolderIndex.LastIndex, _processedFolderIndex.LastIndex);
         if (maxIndex < 0)
@@ -2521,7 +2523,7 @@ public partial class MainWindow : Window
     {
         TraceInput($"UpdatePreviewImagesAsync start idx={_currentImageIndex}");
         var currIdx = _currentImageIndex;
-        if (_isReview)
+        if (_activeReviewMode == ReviewMode.Review)
         {
             var bitmap = await Task.Run(() => LoadBitmapForIndex(_originalFolderIndex, currIdx));
             if (currIdx != _currentImageIndex)
@@ -2579,7 +2581,7 @@ public partial class MainWindow : Window
     private void UpdatePreviewLabels()
     {
         _viewModel.OriginalImageLabel = BuildLabel("Original", _originalFolderIndex);
-        _viewModel.ReviewingImageLabel = _isReview
+        _viewModel.ReviewingImageLabel = _activeReviewMode == ReviewMode.Review
             ? BuildLabel("Processed", _originalFolderIndex)
             : BuildLabel("Processed", _processedFolderIndex);
         TotalImagesToReview = Math.Max(0, _originalFolderIndex.LastIndex + 1);
@@ -2614,7 +2616,7 @@ public partial class MainWindow : Window
 
     private Task OpenReviewThumbnailsWindowAsync()
     {
-        if (!_isReview)
+        if (_activeReviewMode != ReviewMode.Review)
         {
             return Task.CompletedTask;
         }
@@ -2868,7 +2870,7 @@ public partial class MainWindow : Window
 
     private async void ShowThumbnailsCheckBox_Checked(object sender, RoutedEventArgs e)
     {
-        if (_suppressShowThumbnailsCheckboxChange || !_isReview)
+        if (_suppressShowThumbnailsCheckboxChange || _activeReviewMode != ReviewMode.Review)
         {
             return;
         }

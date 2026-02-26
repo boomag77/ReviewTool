@@ -14,7 +14,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _originalImageLabel = "Original 0/0";
     private string _reviewingImageLabel = "Processed 0/0";
     private bool _isInitialReview;
-    private bool _isReview;
+    private ReviewMode? _activeReviewMode;
     private ObservableCollection<ImageFileItem> _originalFiles = new();
     private ImageFileItem? _selectedOriginalFile;
     private string _suggestedNumberLabel = string.Empty;
@@ -471,10 +471,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _isInitialReview, value);
     }
 
-    public bool IsReview
+    public ReviewMode? ActiveReviewMode
     {
-        get => _isReview;
-        set => SetField(ref _isReview, value);
+        get => _activeReviewMode;
+        set => SetField(ref _activeReviewMode, value);
     }
 
     public bool IsAutoFillEnabled

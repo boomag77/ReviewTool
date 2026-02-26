@@ -254,7 +254,7 @@
                             <Style TargetType="CheckBox">
                                 <Setter Property="Visibility" Value="Collapsed" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsReview}" Value="True">
+                                    <DataTrigger Binding="{Binding ActiveReviewMode}" Value="{x:Static local:ReviewMode.Review}">
                                         <Setter Property="Visibility" Value="Visible" />
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -318,6 +318,9 @@
                         <Style TargetType="ColumnDefinition">
                             <Setter Property="Width" Value="Auto" />
                             <Style.Triggers>
+                                <DataTrigger Binding="{Binding ActiveReviewMode}" Value="{x:Static local:ReviewMode.Review}">
+                                    <Setter Property="Width" Value="0" />
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding IsExpanded, ElementName=ActionsExpander}" Value="False">
                                     <Setter Property="Width" Value="Auto" />
                                 </DataTrigger>
@@ -478,6 +481,16 @@
 
             <Border Grid.Row="1" Grid.Column="3" Background="{StaticResource PipelineTextboxBackgroundBrush}"
                     BorderBrush="{StaticResource PipelineCardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="8">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ActiveReviewMode}" Value="{x:Static local:ReviewMode.Review}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <Expander x:Name="ActionsExpander" IsExpanded="True" ExpandDirection="Left"
                           Foreground="{StaticResource PipelineTextBrush}">
                     <Expander.Header>
