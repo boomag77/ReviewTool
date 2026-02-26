@@ -143,7 +143,7 @@
             <Setter Property="Background" Value="#464A52"/>
         </Style>
 
-        <Style x:Key="FinalReviewButtonStyle" TargetType="Button" BasedOn="{StaticResource ElevatedRoundedButton}">
+        <Style x:Key="ReviewButtonStyle" TargetType="Button" BasedOn="{StaticResource ElevatedRoundedButton}">
             <Setter Property="Visibility" Value="Visible"/>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsInitialReview}" Value="True">
@@ -240,9 +240,9 @@
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
-                    <Button Style="{StaticResource FinalReviewButtonStyle}" Content="{Binding FinalReviewButtonText}" Margin="6,0,0,0"
+                    <Button Style="{StaticResource ReviewButtonStyle}" Content="{Binding ReviewButtonText}" Margin="6,0,0,0"
                             Focusable="False" IsEnabled="True"
-                            Click="StartFinalReview_Click" />
+                            Click="StartReview_Click" />
                     <CheckBox x:Name="ShowThumbnailsCheckBox"
                               Content="Show thumbnails"
                               Margin="12,0,0,0"
@@ -254,7 +254,7 @@
                             <Style TargetType="CheckBox">
                                 <Setter Property="Visibility" Value="Collapsed" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsFinalReview}" Value="True">
+                                    <DataTrigger Binding="{Binding IsReview}" Value="True">
                                         <Setter Property="Visibility" Value="Visible" />
                                     </DataTrigger>
                                 </Style.Triggers>

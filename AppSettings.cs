@@ -10,10 +10,10 @@ internal static class AppSettings
 {
     private const string AppFolderName = "ReviewTool";
     private const string StatusSettingsFileName = "review-status-flags.json";
-    private const int DefaultFinalReviewThumbnailSizePx = 104;
-    private const int DefaultFinalReviewThumbnailMaxSizePx = 160;
-    private const int MinFinalReviewThumbnailSizePx = 48;
-    private const int MaxFinalReviewThumbnailSizePx = 320;
+    private const int DefaultReviewThumbnailSizePx = 104;
+    private const int DefaultReviewThumbnailMaxSizePx = 160;
+    private const int MinReviewThumbnailSizePx = 48;
+    private const int MaxReviewThumbnailSizePx = 320;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -75,8 +75,8 @@ internal static class AppSettings
             payload.Version = 2;
             payload.RequiredStatuses = requiredStatuses.ToList();
             payload.CustomStatuses = customStatuses.ToList();
-            payload.FinalReviewThumbnailSizePx ??= DefaultFinalReviewThumbnailSizePx;
-            payload.FinalReviewThumbnailMaxSizePx ??= DefaultFinalReviewThumbnailMaxSizePx;
+            payload.ReviewThumbnailSizePx ??= DefaultReviewThumbnailSizePx;
+            payload.ReviewThumbnailMaxSizePx ??= DefaultReviewThumbnailMaxSizePx;
 
             var json = JsonSerializer.Serialize(payload, JsonOptions);
             var tempPath = settingsPath + ".tmp";
@@ -91,12 +91,12 @@ internal static class AppSettings
         }
     }
 
-    public static bool TryLoadFinalReviewThumbnailSettings(out int thumbnailSizePx,
+    public static bool TryLoadReviewThumbnailSettings(out int thumbnailSizePx,
                                                            out int thumbnailMaxSizePx,
                                                            out string error)
     {
-        thumbnailSizePx = DefaultFinalReviewThumbnailSizePx;
-        thumbnailMaxSizePx = DefaultFinalReviewThumbnailMaxSizePx;
+        thumbnailSizePx = DefaultReviewThumbnailSizePx;
+        thumbnailMaxSizePx = DefaultReviewThumbnailMaxSizePx;
         error = string.Empty;
 
         var settingsPath = BuildSettingsFilePath();
@@ -108,10 +108,10 @@ internal static class AppSettings
         try
         {
             var payload = TryReadPayload(settingsPath, out _, out _) ?? new ReviewStatusSettingsPayload();
-            var loadedMax = payload.FinalReviewThumbnailMaxSizePx ?? DefaultFinalReviewThumbnailMaxSizePx;
-            loadedMax = Math.Clamp(loadedMax, MinFinalReviewThumbnailSizePx, MaxFinalReviewThumbnailSizePx);
-            var loadedSize = payload.FinalReviewThumbnailSizePx ?? DefaultFinalReviewThumbnailSizePx;
-            loadedSize = Math.Clamp(loadedSize, MinFinalReviewThumbnailSizePx, loadedMax);
+            var loadedMax = payload.ReviewThumbnailMaxSizePx ?? DefaultReviewThumbnailMaxSizePx;
+            loadedMax = Math.Clamp(loadedMax, MinReviewThumbnailSizePx, MaxReviewThumbnailSizePx);
+            var loadedSize = payload.ReviewThumbnailSizePx ?? DefaultReviewThumbnailSizePx;
+            loadedSize = Math.Clamp(loadedSize, MinReviewThumbnailSizePx, loadedMax);
 
             thumbnailSizePx = loadedSize;
             thumbnailMaxSizePx = loadedMax;
@@ -124,7 +124,7 @@ internal static class AppSettings
         }
     }
 
-    public static bool TrySaveFinalReviewThumbnailSettings(int thumbnailSizePx,
+    public static bool TrySaveReviewThumbnailSettings(int thumbnailSizePx,
                                                            int thumbnailMaxSizePx,
                                                            out string error)
     {
@@ -143,10 +143,10 @@ internal static class AppSettings
             Directory.CreateDirectory(settingsFolder);
             var payload = TryReadPayload(settingsPath, out _, out _) ?? new ReviewStatusSettingsPayload();
             payload.Version = 2;
-            var clampedMax = Math.Clamp(thumbnailMaxSizePx, MinFinalReviewThumbnailSizePx, MaxFinalReviewThumbnailSizePx);
-            var clampedSize = Math.Clamp(thumbnailSizePx, MinFinalReviewThumbnailSizePx, clampedMax);
-            payload.FinalReviewThumbnailMaxSizePx = clampedMax;
-            payload.FinalReviewThumbnailSizePx = clampedSize;
+            var clampedMax = Math.Clamp(thumbnailMaxSizePx, MinReviewThumbnailSizePx, MaxReviewThumbnailSizePx);
+            var clampedSize = Math.Clamp(thumbnailSizePx, MinReviewThumbnailSizePx, clampedMax);
+            payload.ReviewThumbnailMaxSizePx = clampedMax;
+            payload.ReviewThumbnailSizePx = clampedSize;
 
             var json = JsonSerializer.Serialize(payload, JsonOptions);
             var tempPath = settingsPath + ".tmp";
@@ -195,7 +195,7 @@ internal static class AppSettings
         public int Version { get; set; }
         public List<ReviewStatus>? RequiredStatuses { get; set; }
         public List<ReviewStatus>? CustomStatuses { get; set; }
-        public int? FinalReviewThumbnailSizePx { get; set; }
-        public int? FinalReviewThumbnailMaxSizePx { get; set; }
+        public int? ReviewThumbnailSizePx { get; set; }
+        public int? ReviewThumbnailMaxSizePx { get; set; }
     }
 }

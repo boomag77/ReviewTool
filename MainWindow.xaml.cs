@@ -1,4 +1,4 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -58,7 +58,7 @@ public partial class MainWindow : Window
     private readonly MainWindowViewModel _viewModel = new();
     private readonly InitialReviewProcessor _initialReviewProcessor;
     private readonly FileProcessor _fileProcessor = new();
-    private readonly FinalReviewProcessor _finalReviewProcessor;
+    private readonly ReviewProcessor _reviewProcessor;
 
     private readonly CurrentFolderIndex _originalFolderIndex;
     private readonly CurrentFolderIndex _processedFolderIndex;
@@ -66,7 +66,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _processedFolderIndexCts;
     private int _currentImageIndex;
     private bool _isInitialReview;
-    private bool _isFinalReview;
+    private bool _isReview;
     private string? _initialReviewFolder;
     private bool _suppressFileSelection;
     private MagnifierAdorner? _magnifierAdorner;
@@ -82,11 +82,11 @@ public partial class MainWindow : Window
     private bool _autoFillInProgress;
     private int _lastHandledIndex = -1;
     private bool _transitionInProgress;
-    private FinalReviewThumbnailsWindow? _finalReviewThumbnailsWindow;
-    private CancellationTokenSource? _finalReviewThumbnailLoadCts;
+    private ReviewThumbnailsWindow? _reviewThumbnailsWindow;
+    private CancellationTokenSource? _reviewThumbnailLoadCts;
     private bool _suppressShowThumbnailsCheckboxChange;
-    private int _finalReviewThumbnailHeightPx = 104;
-    private int _finalReviewThumbnailMaxHeightPx = 160;
+    private int _reviewThumbnailHeightPx = 104;
+    private int _reviewThumbnailMaxHeightPx = 160;
 
     private string _originalFolderPath = string.Empty;
 
@@ -103,10 +103,10 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _initialReviewProcessor = new InitialReviewProcessor(_viewModel);
-        _finalReviewProcessor = new FinalReviewProcessor(_fileProcessor);
+        _reviewProcessor = new ReviewProcessor(_fileProcessor);
         DataContext = _viewModel;
         TryLoadPersistedReviewStatuses();
-        TryLoadPersistedFinalReviewThumbnailSettings();
+        TryLoadPersistedReviewThumbnailSettings();
         Loaded += (_, _) => Keyboard.Focus(this);
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         _originalFolderIndex = new CurrentFolderIndex(this);
@@ -116,7 +116,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        CloseFinalReviewThumbnailsWindow();
+        CloseReviewThumbnailsWindow();
         _processedFolderIndexCts?.Cancel();
         _originalFolderIndexCts?.Cancel();
         base.OnClosing(e);
@@ -128,11 +128,11 @@ public partial class MainWindow : Window
         set => field = value;
     }
 
-    private async void StartFinalReview_Click(object sender, RoutedEventArgs e)
+    private async void StartReview_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            await StartFinalReviewAsync();
+            await StartReviewAsync();
         }
         catch (OperationCanceledException)
         {
@@ -144,28 +144,28 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task StartFinalReviewAsync()
+    private async Task StartReviewAsync()
     {
-        if (_isFinalReview)
+        if (_isReview)
         {
-            FinishFinalReview();
+            FinishReview();
             return;
         }
 
         _isInitialReview = false;
-        _isFinalReview = true;
+        _isReview = true;
         _initialReviewFolder = null;
         _viewModel.IsInitialReview = false;
-        _viewModel.IsFinalReview = true;
+        _viewModel.IsReview = true;
         _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>();
         _viewModel.SelectedOriginalFile = null;
-        _viewModel.FinalReviewButtonText = "Finish Final Review";
+        _viewModel.ReviewButtonText = "Finish Review";
         var originalFolder = SelectFolder("Select original images folder");
         if (string.IsNullOrWhiteSpace(originalFolder))
         {
-            _isFinalReview = false;
-            _viewModel.IsFinalReview = false;
-            _viewModel.FinalReviewButtonText = "Start Final Review...";
+            _isReview = false;
+            _viewModel.IsReview = false;
+            _viewModel.ReviewButtonText = "Start Review...";
             return;
         }
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
@@ -175,7 +175,7 @@ public partial class MainWindow : Window
         _viewModel.ReviewingImagePreview = null;
         UpdatePreviewLabels();
         SetShowThumbnailsCheckBox(true);
-        await OpenFinalReviewThumbnailsWindowAsync();
+        await OpenReviewThumbnailsWindowAsync();
         FocusWindowForInputDeferred();
     }
 
@@ -238,11 +238,11 @@ public partial class MainWindow : Window
         var imageFilesDigitsNumber = _fileProcessor.GetMaxDigitsInImageFiles(originalFolder);
 
         _isInitialReview = true;
-        _isFinalReview = false;
+        _isReview = false;
         _viewModel.IsInitialReview = true;
-        _viewModel.IsFinalReview = false;
+        _viewModel.IsReview = false;
         _viewModel.InitialReviewButtonText = "Finish Initial Review";
-        _viewModel.FinalReviewButtonText = "Start Final Review...";
+        _viewModel.ReviewButtonText = "Start Review...";
         SetShowThumbnailsCheckBox(false);
         //_fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
         _suggestedNames.Clear();
@@ -344,14 +344,14 @@ public partial class MainWindow : Window
         _capturedMappingInfo.Clear();
         ClearReviewState(clearProcessed: true);
         _isInitialReview = false;
-        _isFinalReview = false;
+        _isReview = false;
         _initialReviewFolder = null;
         _originalFolderPath = string.Empty;
         _viewModel.IsInitialReview = false;
-        _viewModel.IsFinalReview = false;
+        _viewModel.IsReview = false;
         _viewModel.TargetFolderDisplayPath = string.Empty;
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
-        _viewModel.FinalReviewButtonText = "Start Final Review...";
+        _viewModel.ReviewButtonText = "Start Review...";
         SetShowThumbnailsCheckBox(false);
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
@@ -643,16 +643,16 @@ public partial class MainWindow : Window
     }
 
 
-    private void FinishFinalReview()
+    private void FinishReview()
     {
-        PersistFinalReviewThumbnailSettings();
+        PersistReviewThumbnailSettings();
         SetShowThumbnailsCheckBox(false);
-        CloseFinalReviewThumbnailsWindow();
+        CloseReviewThumbnailsWindow();
         ClearReviewState(clearProcessed: true);
-        _isFinalReview = false;
-        _viewModel.IsFinalReview = false;
-        _viewModel.FinalReviewButtonText = "Start Final Review...";
-        MessageBox.Show(this, "Final Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
+        _isReview = false;
+        _viewModel.IsReview = false;
+        _viewModel.ReviewButtonText = "Start Review...";
+        MessageBox.Show(this, "Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private async void PreviousImageCommand_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -772,15 +772,15 @@ public partial class MainWindow : Window
         Debug.WriteLine($"Failed to apply persisted statuses: {validationError}");
     }
 
-    private void TryLoadPersistedFinalReviewThumbnailSettings()
+    private void TryLoadPersistedReviewThumbnailSettings()
     {
-        if (AppSettings.TryLoadFinalReviewThumbnailSettings(out var thumbnailSizePx,
+        if (AppSettings.TryLoadReviewThumbnailSettings(out var thumbnailSizePx,
                                                             out var thumbnailMaxSizePx,
                                                             out var loadError))
         {
-            _finalReviewThumbnailMaxHeightPx = thumbnailMaxSizePx;
-            _finalReviewThumbnailHeightPx = Math.Clamp(thumbnailSizePx, 48, _finalReviewThumbnailMaxHeightPx);
-            _finalReviewProcessor.SetThumbnailHeight(_finalReviewThumbnailHeightPx);
+            _reviewThumbnailMaxHeightPx = thumbnailMaxSizePx;
+            _reviewThumbnailHeightPx = Math.Clamp(thumbnailSizePx, 48, _reviewThumbnailMaxHeightPx);
+            _reviewProcessor.SetThumbnailHeight(_reviewThumbnailHeightPx);
             return;
         }
 
@@ -1729,7 +1729,7 @@ public partial class MainWindow : Window
 
         static int GetMaxDigitsInIndex(int index)
         {
-            if (index < 0) index = -index; // если вдруг
+            if (index < 0) index = -index; // ???? ?????
             if (index < 10) return 1;
             if (index < 100) return 2;
             if (index < 1000) return 3;
@@ -2392,7 +2392,7 @@ public partial class MainWindow : Window
         {
             return;
         }
-        var maxIndex = _isFinalReview
+        var maxIndex = _isReview
             ? _originalFolderIndex.LastIndex
             : Math.Max(_originalFolderIndex.LastIndex, _processedFolderIndex.LastIndex);
         if (maxIndex < 0)
@@ -2521,7 +2521,7 @@ public partial class MainWindow : Window
     {
         TraceInput($"UpdatePreviewImagesAsync start idx={_currentImageIndex}");
         var currIdx = _currentImageIndex;
-        if (_isFinalReview)
+        if (_isReview)
         {
             var bitmap = await Task.Run(() => LoadBitmapForIndex(_originalFolderIndex, currIdx));
             if (currIdx != _currentImageIndex)
@@ -2579,7 +2579,7 @@ public partial class MainWindow : Window
     private void UpdatePreviewLabels()
     {
         _viewModel.OriginalImageLabel = BuildLabel("Original", _originalFolderIndex);
-        _viewModel.ReviewingImageLabel = _isFinalReview
+        _viewModel.ReviewingImageLabel = _isReview
             ? BuildLabel("Processed", _originalFolderIndex)
             : BuildLabel("Processed", _processedFolderIndex);
         TotalImagesToReview = Math.Max(0, _originalFolderIndex.LastIndex + 1);
@@ -2596,7 +2596,7 @@ public partial class MainWindow : Window
 
     private void ClearReviewState(bool clearProcessed)
     {
-        CloseFinalReviewThumbnailsWindow();
+        CloseReviewThumbnailsWindow();
         _originalFolderIndexCts?.Cancel();
         _originalFolderIndexCts = null;
         _originalFolderIndex.ClearIndex();
@@ -2612,113 +2612,113 @@ public partial class MainWindow : Window
         UpdatePreviewLabels();
     }
 
-    private Task OpenFinalReviewThumbnailsWindowAsync()
+    private Task OpenReviewThumbnailsWindowAsync()
     {
-        if (!_isFinalReview)
+        if (!_isReview)
         {
             return Task.CompletedTask;
         }
 
-        CloseFinalReviewThumbnailsWindow();
+        CloseReviewThumbnailsWindow();
 
-        _finalReviewThumbnailsWindow = new FinalReviewThumbnailsWindow
+        _reviewThumbnailsWindow = new ReviewThumbnailsWindow
         {
             Owner = this
         };
-        _finalReviewThumbnailsWindow.SetThumbnailMaxSize(_finalReviewThumbnailMaxHeightPx);
-        _finalReviewThumbnailsWindow.SetThumbnailSize(_finalReviewThumbnailHeightPx);
-        _finalReviewThumbnailsWindow.ThumbnailSelected += FinalReviewThumbnailsWindow_ThumbnailSelected;
-        _finalReviewThumbnailsWindow.ThumbnailSizeChanged += FinalReviewThumbnailsWindow_ThumbnailSizeChanged;
-        _finalReviewThumbnailsWindow.ThumbnailMaxSizeChanged += FinalReviewThumbnailsWindow_ThumbnailMaxSizeChanged;
-        _finalReviewThumbnailsWindow.Closed += FinalReviewThumbnailsWindow_Closed;
-        _finalReviewThumbnailsWindow.Show();
+        _reviewThumbnailsWindow.SetThumbnailMaxSize(_reviewThumbnailMaxHeightPx);
+        _reviewThumbnailsWindow.SetThumbnailSize(_reviewThumbnailHeightPx);
+        _reviewThumbnailsWindow.ThumbnailSelected += ReviewThumbnailsWindow_ThumbnailSelected;
+        _reviewThumbnailsWindow.ThumbnailSizeChanged += ReviewThumbnailsWindow_ThumbnailSizeChanged;
+        _reviewThumbnailsWindow.ThumbnailMaxSizeChanged += ReviewThumbnailsWindow_ThumbnailMaxSizeChanged;
+        _reviewThumbnailsWindow.Closed += ReviewThumbnailsWindow_Closed;
+        _reviewThumbnailsWindow.Show();
 
-        var sourceImagePaths = BuildFinalReviewSourceImagePaths();
-        var availableStatuses = BuildFinalReviewAvailableStatuses();
-        _finalReviewProcessor.SetThumbnailHeight(_finalReviewThumbnailHeightPx);
-        var thumbnailIndex = _finalReviewProcessor.BuildThumbnailIndex(sourceImagePaths, availableStatuses);
-        if (_finalReviewThumbnailsWindow is null)
+        var sourceImagePaths = BuildReviewSourceImagePaths();
+        var availableStatuses = BuildReviewAvailableStatuses();
+        _reviewProcessor.SetThumbnailHeight(_reviewThumbnailHeightPx);
+        var thumbnailIndex = _reviewProcessor.BuildThumbnailIndex(sourceImagePaths, availableStatuses);
+        if (_reviewThumbnailsWindow is null)
         {
             return Task.CompletedTask;
         }
 
-        _finalReviewThumbnailsWindow.SetItems(thumbnailIndex.Items);
-        _finalReviewThumbnailsWindow.SetFilters(thumbnailIndex.Filters);
-        StartFinalReviewThumbnailLazyLoading(thumbnailIndex.Items);
+        _reviewThumbnailsWindow.SetItems(thumbnailIndex.Items);
+        _reviewThumbnailsWindow.SetFilters(thumbnailIndex.Filters);
+        StartReviewThumbnailLazyLoading(thumbnailIndex.Items);
         return Task.CompletedTask;
     }
 
-    private void CloseFinalReviewThumbnailsWindow()
+    private void CloseReviewThumbnailsWindow()
     {
-        CancelFinalReviewThumbnailLoading();
-        if (_finalReviewThumbnailsWindow is null)
+        CancelReviewThumbnailLoading();
+        if (_reviewThumbnailsWindow is null)
         {
             return;
         }
 
-        _finalReviewThumbnailsWindow.ThumbnailSelected -= FinalReviewThumbnailsWindow_ThumbnailSelected;
-        _finalReviewThumbnailsWindow.ThumbnailSizeChanged -= FinalReviewThumbnailsWindow_ThumbnailSizeChanged;
-        _finalReviewThumbnailsWindow.ThumbnailMaxSizeChanged -= FinalReviewThumbnailsWindow_ThumbnailMaxSizeChanged;
-        _finalReviewThumbnailsWindow.Closed -= FinalReviewThumbnailsWindow_Closed;
-        _finalReviewThumbnailsWindow.Close();
-        _finalReviewThumbnailsWindow = null;
+        _reviewThumbnailsWindow.ThumbnailSelected -= ReviewThumbnailsWindow_ThumbnailSelected;
+        _reviewThumbnailsWindow.ThumbnailSizeChanged -= ReviewThumbnailsWindow_ThumbnailSizeChanged;
+        _reviewThumbnailsWindow.ThumbnailMaxSizeChanged -= ReviewThumbnailsWindow_ThumbnailMaxSizeChanged;
+        _reviewThumbnailsWindow.Closed -= ReviewThumbnailsWindow_Closed;
+        _reviewThumbnailsWindow.Close();
+        _reviewThumbnailsWindow = null;
     }
 
-    private void FinalReviewThumbnailsWindow_Closed(object? sender, EventArgs e)
+    private void ReviewThumbnailsWindow_Closed(object? sender, EventArgs e)
     {
-        CancelFinalReviewThumbnailLoading();
-        if (_finalReviewThumbnailsWindow is not null)
+        CancelReviewThumbnailLoading();
+        if (_reviewThumbnailsWindow is not null)
         {
-            _finalReviewThumbnailsWindow.ThumbnailSelected -= FinalReviewThumbnailsWindow_ThumbnailSelected;
-            _finalReviewThumbnailsWindow.ThumbnailSizeChanged -= FinalReviewThumbnailsWindow_ThumbnailSizeChanged;
-            _finalReviewThumbnailsWindow.ThumbnailMaxSizeChanged -= FinalReviewThumbnailsWindow_ThumbnailMaxSizeChanged;
-            _finalReviewThumbnailsWindow.Closed -= FinalReviewThumbnailsWindow_Closed;
+            _reviewThumbnailsWindow.ThumbnailSelected -= ReviewThumbnailsWindow_ThumbnailSelected;
+            _reviewThumbnailsWindow.ThumbnailSizeChanged -= ReviewThumbnailsWindow_ThumbnailSizeChanged;
+            _reviewThumbnailsWindow.ThumbnailMaxSizeChanged -= ReviewThumbnailsWindow_ThumbnailMaxSizeChanged;
+            _reviewThumbnailsWindow.Closed -= ReviewThumbnailsWindow_Closed;
         }
 
-        PersistFinalReviewThumbnailSettings();
-        _finalReviewThumbnailsWindow = null;
+        PersistReviewThumbnailSettings();
+        _reviewThumbnailsWindow = null;
         SetShowThumbnailsCheckBox(false);
     }
 
-    private void FinalReviewThumbnailsWindow_ThumbnailSizeChanged(int thumbnailHeightPx)
+    private void ReviewThumbnailsWindow_ThumbnailSizeChanged(int thumbnailHeightPx)
     {
-        _finalReviewThumbnailHeightPx = thumbnailHeightPx;
-        _finalReviewProcessor.SetThumbnailHeight(_finalReviewThumbnailHeightPx);
-        if (_finalReviewThumbnailsWindow is null || _finalReviewThumbnailsWindow.Items.Count == 0)
+        _reviewThumbnailHeightPx = thumbnailHeightPx;
+        _reviewProcessor.SetThumbnailHeight(_reviewThumbnailHeightPx);
+        if (_reviewThumbnailsWindow is null || _reviewThumbnailsWindow.Items.Count == 0)
         {
             return;
         }
 
-        foreach (var item in _finalReviewThumbnailsWindow.Items)
+        foreach (var item in _reviewThumbnailsWindow.Items)
         {
             item.Thumbnail = null;
         }
 
-        StartFinalReviewThumbnailLazyLoading(_finalReviewThumbnailsWindow.Items.ToList());
+        StartReviewThumbnailLazyLoading(_reviewThumbnailsWindow.Items.ToList());
     }
 
-    private void FinalReviewThumbnailsWindow_ThumbnailMaxSizeChanged(int thumbnailMaxHeightPx)
+    private void ReviewThumbnailsWindow_ThumbnailMaxSizeChanged(int thumbnailMaxHeightPx)
     {
-        _finalReviewThumbnailMaxHeightPx = thumbnailMaxHeightPx;
-        if (_finalReviewThumbnailHeightPx > _finalReviewThumbnailMaxHeightPx)
+        _reviewThumbnailMaxHeightPx = thumbnailMaxHeightPx;
+        if (_reviewThumbnailHeightPx > _reviewThumbnailMaxHeightPx)
         {
-            _finalReviewThumbnailHeightPx = _finalReviewThumbnailMaxHeightPx;
-            _finalReviewProcessor.SetThumbnailHeight(_finalReviewThumbnailHeightPx);
+            _reviewThumbnailHeightPx = _reviewThumbnailMaxHeightPx;
+            _reviewProcessor.SetThumbnailHeight(_reviewThumbnailHeightPx);
         }
 
-        PersistFinalReviewThumbnailSettings();
+        PersistReviewThumbnailSettings();
     }
 
-    private void StartFinalReviewThumbnailLazyLoading(IReadOnlyList<FinalReviewThumbnailItem> thumbnailItems)
+    private void StartReviewThumbnailLazyLoading(IReadOnlyList<ReviewThumbnailItem> thumbnailItems)
     {
-        CancelFinalReviewThumbnailLoading();
-        if (_finalReviewThumbnailsWindow is null || thumbnailItems.Count == 0)
+        CancelReviewThumbnailLoading();
+        if (_reviewThumbnailsWindow is null || thumbnailItems.Count == 0)
         {
             return;
         }
 
         var loadingCts = new CancellationTokenSource();
-        _finalReviewThumbnailLoadCts = loadingCts;
+        _reviewThumbnailLoadCts = loadingCts;
         var cancellationToken = loadingCts.Token;
         var maxParallelLoads = Math.Clamp(Environment.ProcessorCount / 2, 2, 6);
         var loadThrottle = new SemaphoreSlim(maxParallelLoads, maxParallelLoads);
@@ -2749,7 +2749,7 @@ public partial class MainWindow : Window
                         BitmapSource? thumbnailBitmap;
                         try
                         {
-                            thumbnailBitmap = await _finalReviewProcessor
+                            thumbnailBitmap = await _reviewProcessor
                                 .LoadThumbnailForThumbnailIndexAsync(thumbnailItem.Index, cancellationToken)
                                 .ConfigureAwait(false);
                         }
@@ -2807,17 +2807,17 @@ public partial class MainWindow : Window
         }, cancellationToken);
     }
 
-    private void CancelFinalReviewThumbnailLoading()
+    private void CancelReviewThumbnailLoading()
     {
-        _finalReviewThumbnailLoadCts?.Cancel();
-        _finalReviewThumbnailLoadCts?.Dispose();
-        _finalReviewThumbnailLoadCts = null;
+        _reviewThumbnailLoadCts?.Cancel();
+        _reviewThumbnailLoadCts?.Dispose();
+        _reviewThumbnailLoadCts = null;
     }
 
-    private void PersistFinalReviewThumbnailSettings()
+    private void PersistReviewThumbnailSettings()
     {
-        if (AppSettings.TrySaveFinalReviewThumbnailSettings(_finalReviewThumbnailHeightPx,
-                                                            _finalReviewThumbnailMaxHeightPx,
+        if (AppSettings.TrySaveReviewThumbnailSettings(_reviewThumbnailHeightPx,
+                                                            _reviewThumbnailMaxHeightPx,
                                                             out var saveError))
         {
             return;
@@ -2826,16 +2826,16 @@ public partial class MainWindow : Window
         Debug.WriteLine(saveError);
     }
 
-    private async void FinalReviewThumbnailsWindow_ThumbnailSelected(int index)
+    private async void ReviewThumbnailsWindow_ThumbnailSelected(int index)
     {
-        var bitmap = await _finalReviewProcessor.LoadBitmapForThumbnailIndexAsync(index, CancellationToken.None);
+        var bitmap = await _reviewProcessor.LoadBitmapForThumbnailIndexAsync(index, CancellationToken.None);
         _currentImageIndex = index;
         _viewModel.OriginalImagePreview = bitmap;
         _viewModel.ReviewingImagePreview = bitmap;
         UpdatePreviewLabels();
     }
 
-    private List<string> BuildFinalReviewSourceImagePaths()
+    private List<string> BuildReviewSourceImagePaths()
     {
         var imagePaths = new List<string>();
         var maxIndex = _originalFolderIndex.LastIndex;
@@ -2858,7 +2858,7 @@ public partial class MainWindow : Window
         return imagePaths;
     }
 
-    private List<ReviewStatus> BuildFinalReviewAvailableStatuses()
+    private List<ReviewStatus> BuildReviewAvailableStatuses()
     {
         var statuses = new List<ReviewStatus>(_viewModel.RequiredReviewStatuses.Count + _viewModel.CustomReviewStatuses.Count);
         statuses.AddRange(_viewModel.RequiredReviewStatuses);
@@ -2868,27 +2868,27 @@ public partial class MainWindow : Window
 
     private async void ShowThumbnailsCheckBox_Checked(object sender, RoutedEventArgs e)
     {
-        if (_suppressShowThumbnailsCheckboxChange || !_isFinalReview)
+        if (_suppressShowThumbnailsCheckboxChange || !_isReview)
         {
             return;
         }
 
-        if (_finalReviewThumbnailsWindow is not null)
+        if (_reviewThumbnailsWindow is not null)
         {
-            _finalReviewThumbnailsWindow.Show();
-            _finalReviewThumbnailsWindow.Activate();
-            if (_finalReviewThumbnailsWindow.Items.Count > 0)
+            _reviewThumbnailsWindow.Show();
+            _reviewThumbnailsWindow.Activate();
+            if (_reviewThumbnailsWindow.Items.Count > 0)
             {
-                var pendingItems = _finalReviewThumbnailsWindow.Items.Where(item => item.Thumbnail is null).ToList();
+                var pendingItems = _reviewThumbnailsWindow.Items.Where(item => item.Thumbnail is null).ToList();
                 if (pendingItems.Count > 0)
                 {
-                    StartFinalReviewThumbnailLazyLoading(pendingItems);
+                    StartReviewThumbnailLazyLoading(pendingItems);
                 }
             }
             return;
         }
 
-        await OpenFinalReviewThumbnailsWindowAsync();
+        await OpenReviewThumbnailsWindowAsync();
     }
 
     private void ShowThumbnailsCheckBox_Unchecked(object sender, RoutedEventArgs e)
@@ -2898,8 +2898,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        CancelFinalReviewThumbnailLoading();
-        _finalReviewThumbnailsWindow?.Hide();
+        CancelReviewThumbnailLoading();
+        _reviewThumbnailsWindow?.Hide();
     }
 
     private void SetShowThumbnailsCheckBox(bool isChecked)

@@ -1,11 +1,11 @@
-<Window x:Class="ReviewTool.FinalReviewThumbnailsWindow"
+<Window x:Class="ReviewTool.ReviewThumbnailsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ReviewTool"
         mc:Ignorable="d"
-        Title="Final Review Thumbnails"
+        Title="Review Thumbnails"
         Height="760"
         Width="1180"
         MinHeight="520"
@@ -151,7 +151,7 @@
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="{x:Type local:FinalReviewThumbnailFilterItem}">
+                    <DataTemplate DataType="{x:Type local:ReviewThumbnailFilterItem}">
                         <Button Style="{StaticResource ThumbnailFilterButtonStyle}"
                                 Content="{Binding ButtonLabel}"
                                 Tag="{Binding ButtonTag}"
@@ -170,7 +170,7 @@
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
                     <Setter Property="Padding" Value="0"/>
-                    <Setter Property="Margin" Value="10,10,10,6"/>
+                    <Setter Property="Margin" Value="2,3,2,2"/>
                     <Setter Property="Background" Value="Transparent"/>
                     <Setter Property="HorizontalContentAlignment" Value="Center"/>
                     <Setter Property="BorderBrush" Value="Transparent"/>
@@ -189,7 +189,7 @@
                 </ItemsPanelTemplate>
             </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
-                <DataTemplate DataType="{x:Type local:FinalReviewThumbnailItem}">
+                <DataTemplate DataType="{x:Type local:ReviewThumbnailItem}">
                     <StackPanel Width="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ThumbnailItemWidth}">
                         <Border Background="#0E1218"
                                 BorderBrush="#2A2F38"
@@ -202,10 +202,12 @@
                             </Border>
                         </Border>
                         <TextBlock Text="{Binding Label}"
-                                   FontSize="15"
+                                   FontSize="11"
                                    Margin="0,6,0,0"
                                    HorizontalAlignment="Center"
-                                   Foreground="#F1F4F8"/>
+                                   Foreground="#F1F4F8"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"/>
                     </StackPanel>
                 </DataTemplate>
             </ListBox.ItemTemplate>

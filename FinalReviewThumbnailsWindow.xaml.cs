@@ -8,7 +8,7 @@ using System.Windows.Media.Imaging;
 
 namespace ReviewTool;
 
-public partial class FinalReviewThumbnailsWindow : Window
+public partial class ReviewThumbnailsWindow : Window
 {
     public event Action<int>? ThumbnailSelected;
     public event Action<int>? ThumbnailSizeChanged;
@@ -17,8 +17,8 @@ public partial class FinalReviewThumbnailsWindow : Window
     private const int MinThumbnailSizePx = 48;
     private const int MaxThumbnailSizePx = 320;
 
-    public ObservableCollection<FinalReviewThumbnailItem> Items { get; } = new();
-    public ObservableCollection<FinalReviewThumbnailFilterItem> Filters { get; } = new();
+    public ObservableCollection<ReviewThumbnailItem> Items { get; } = new();
+    public ObservableCollection<ReviewThumbnailFilterItem> Filters { get; } = new();
     private ICollectionView? _itemsView;
     private string? _activeFilterFlagName;
 
@@ -29,7 +29,7 @@ public partial class FinalReviewThumbnailsWindow : Window
     }
 
     public static readonly DependencyProperty ThumbnailTileWidthProperty =
-        DependencyProperty.Register(nameof(ThumbnailTileWidth), typeof(double), typeof(FinalReviewThumbnailsWindow), new PropertyMetadata(68d));
+        DependencyProperty.Register(nameof(ThumbnailTileWidth), typeof(double), typeof(ReviewThumbnailsWindow), new PropertyMetadata(68d));
 
     public double ThumbnailTileHeight
     {
@@ -38,7 +38,7 @@ public partial class FinalReviewThumbnailsWindow : Window
     }
 
     public static readonly DependencyProperty ThumbnailTileHeightProperty =
-        DependencyProperty.Register(nameof(ThumbnailTileHeight), typeof(double), typeof(FinalReviewThumbnailsWindow), new PropertyMetadata(104d));
+        DependencyProperty.Register(nameof(ThumbnailTileHeight), typeof(double), typeof(ReviewThumbnailsWindow), new PropertyMetadata(104d));
 
     public double ThumbnailItemWidth
     {
@@ -47,7 +47,7 @@ public partial class FinalReviewThumbnailsWindow : Window
     }
 
     public static readonly DependencyProperty ThumbnailItemWidthProperty =
-        DependencyProperty.Register(nameof(ThumbnailItemWidth), typeof(double), typeof(FinalReviewThumbnailsWindow), new PropertyMetadata(88d));
+        DependencyProperty.Register(nameof(ThumbnailItemWidth), typeof(double), typeof(ReviewThumbnailsWindow), new PropertyMetadata(88d));
 
     public int ThumbnailMaxSize
     {
@@ -56,9 +56,9 @@ public partial class FinalReviewThumbnailsWindow : Window
     }
 
     public static readonly DependencyProperty ThumbnailMaxSizeProperty =
-        DependencyProperty.Register(nameof(ThumbnailMaxSize), typeof(int), typeof(FinalReviewThumbnailsWindow), new PropertyMetadata(160));
+        DependencyProperty.Register(nameof(ThumbnailMaxSize), typeof(int), typeof(ReviewThumbnailsWindow), new PropertyMetadata(160));
 
-    public FinalReviewThumbnailsWindow()
+    public ReviewThumbnailsWindow()
     {
         InitializeComponent();
         ThumbnailsList.ItemsSource = Items;
@@ -69,7 +69,7 @@ public partial class FinalReviewThumbnailsWindow : Window
         SetThumbnailMaxSize((int)Math.Round(ThumbnailSizeSlider.Maximum, MidpointRounding.AwayFromZero));
     }
 
-    public void SetItems(IEnumerable<FinalReviewThumbnailItem> items)
+    public void SetItems(IEnumerable<ReviewThumbnailItem> items)
     {
         Items.Clear();
         foreach (var item in items)
@@ -80,7 +80,7 @@ public partial class FinalReviewThumbnailsWindow : Window
         _itemsView?.Refresh();
     }
 
-    public void SetFilters(IEnumerable<FinalReviewThumbnailFilterItem> filters)
+    public void SetFilters(IEnumerable<ReviewThumbnailFilterItem> filters)
     {
         Filters.Clear();
         foreach (var filter in filters)
@@ -99,7 +99,7 @@ public partial class FinalReviewThumbnailsWindow : Window
 
     private void ThumbnailsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ThumbnailsList.SelectedItem is not FinalReviewThumbnailItem selectedItem)
+        if (ThumbnailsList.SelectedItem is not ReviewThumbnailItem selectedItem)
         {
             return;
         }
@@ -233,7 +233,7 @@ public partial class FinalReviewThumbnailsWindow : Window
 
     private bool FilterThumbnailItem(object obj)
     {
-        if (obj is not FinalReviewThumbnailItem item)
+        if (obj is not ReviewThumbnailItem item)
         {
             return false;
         }
@@ -250,11 +250,11 @@ public partial class FinalReviewThumbnailsWindow : Window
     {
         ThumbnailTileHeight = thumbnailHeightPx;
         ThumbnailTileWidth = Math.Round(thumbnailHeightPx * 68d / 104d, MidpointRounding.AwayFromZero);
-        ThumbnailItemWidth = ThumbnailTileWidth + 20d;
+        ThumbnailItemWidth = ThumbnailTileWidth + 10d;
     }
 }
 
-public sealed class FinalReviewThumbnailItem : INotifyPropertyChanged
+public sealed class ReviewThumbnailItem : INotifyPropertyChanged
 {
     public int Index { get; init; }
     public string Label { get; init; } = string.Empty;
@@ -281,7 +281,7 @@ public sealed class FinalReviewThumbnailItem : INotifyPropertyChanged
     }
 }
 
-public sealed class FinalReviewThumbnailFilterItem : INotifyPropertyChanged
+public sealed class ReviewThumbnailFilterItem : INotifyPropertyChanged
 {
     private bool _isActive;
     public string? FlagName { get; init; }

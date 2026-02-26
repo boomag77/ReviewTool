@@ -5,7 +5,7 @@ using System.Windows.Media.Imaging;
 
 namespace ReviewTool;
 
-internal sealed class FinalReviewProcessor
+internal sealed class ReviewProcessor
 {
     private const int MinThumbnailHeightPx = 48;
     private int _thumbnailHeightPx = 104;
@@ -13,7 +13,7 @@ internal sealed class FinalReviewProcessor
     private readonly FileProcessor _fileProcessor;
     private readonly Dictionary<int, string> _imagePathByThumbnailIndex = new();
 
-    public FinalReviewProcessor(FileProcessor fileProcessor)
+    public ReviewProcessor(FileProcessor fileProcessor)
     {
         _fileProcessor = fileProcessor;
     }
@@ -23,12 +23,12 @@ internal sealed class FinalReviewProcessor
         _thumbnailHeightPx = Math.Max(MinThumbnailHeightPx, thumbnailHeightPx);
     }
 
-    public FinalReviewThumbnailIndex BuildThumbnailIndex(IReadOnlyList<string> imagePaths,
+    public ReviewThumbnailIndex BuildThumbnailIndex(IReadOnlyList<string> imagePaths,
                                                          IReadOnlyList<ReviewStatus> availableStatuses)
     {
         _imagePathByThumbnailIndex.Clear();
         var statusAffixes = BuildStatusAffixes(availableStatuses);
-        var thumbnailItems = new List<FinalReviewThumbnailItem>(imagePaths.Count);
+        var thumbnailItems = new List<ReviewThumbnailItem>(imagePaths.Count);
         var detectedFlagCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < imagePaths.Count; index++)
         {
@@ -38,13 +38,14 @@ internal sealed class FinalReviewProcessor
                 continue;
             }
 
+            var fileNameWithExtension = Path.GetFileName(imagePath);
             var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(imagePath);
             var matchedFlagName = DetectFlagNameFromFileName(fileNameWithoutExtension, statusAffixes);
             _imagePathByThumbnailIndex[index] = imagePath;
-            thumbnailItems.Add(new FinalReviewThumbnailItem
+            thumbnailItems.Add(new ReviewThumbnailItem
             {
                 Index = index,
-                Label = fileNameWithoutExtension,
+                Label = fileNameWithExtension,
                 FilePath = imagePath,
                 Thumbnail = null,
                 FlagName = matchedFlagName
@@ -57,9 +58,9 @@ internal sealed class FinalReviewProcessor
             }
         }
 
-        var filters = new List<FinalReviewThumbnailFilterItem>
+        var filters = new List<ReviewThumbnailFilterItem>
         {
-            new FinalReviewThumbnailFilterItem
+            new ReviewThumbnailFilterItem
             {
                 FlagName = null,
                 ButtonLabel = $"All ({thumbnailItems.Count})"
@@ -67,14 +68,14 @@ internal sealed class FinalReviewProcessor
         };
         foreach (var kv in detectedFlagCounts.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
-            filters.Add(new FinalReviewThumbnailFilterItem
+            filters.Add(new ReviewThumbnailFilterItem
             {
                 FlagName = kv.Key,
                 ButtonLabel = $"{kv.Key} ({kv.Value})"
             });
         }
 
-        return new FinalReviewThumbnailIndex
+        return new ReviewThumbnailIndex
         {
             Items = thumbnailItems,
             Filters = filters
@@ -183,8 +184,14 @@ internal sealed class FinalReviewProcessor
             fastThumbnail.DecodePixelHeight = _thumbnailHeightPx;
             fastThumbnail.UriSource = new Uri(imagePath, UriKind.Absolute);
             fastThumbnail.EndInit();
-            fastThumbnail.Freeze();
-            return (BitmapSource)fastThumbnail;
+                var orientation = ReadExifOrientationFromFile(imagePath);
+            var orientedThumbnail = ApplyExifOrientation(fastThumbnail, orientation);
+            if (!orientedThumbnail.IsFrozen)
+            {
+                orientedThumbnail.Freeze();
+            }
+
+            return orientedThumbnail;
         }, cancellationToken);
     }
 
@@ -192,6 +199,110 @@ internal sealed class FinalReviewProcessor
     {
         return imagePathSpan.EndsWith(".tif", StringComparison.OrdinalIgnoreCase) ||
            imagePathSpan.EndsWith(".tiff", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int ReadExifOrientation(BitmapMetadata? metadata)
+    {
+        if (metadata is null)
+        {
+            return 1;
+        }
+
+        object? value = null;
+        try
+        {
+            value = metadata.GetQuery("/app1/ifd/{ushort=274}");
+        }
+        catch
+        {
+        }
+
+        if (value is null)
+        {
+            try
+            {
+                value = metadata.GetQuery("/ifd/{ushort=274}");
+            }
+            catch
+            {
+            }
+        }
+
+        if (value is ushort ushortValue)
+        {
+            return ushortValue;
+        }
+
+        if (value is short shortValue)
+        {
+            return shortValue;
+        }
+
+        return 1;
+    }
+
+    private static int ReadExifOrientationFromFile(string imagePath)
+    {
+        try
+        {
+            using var fileStream = new FileStream(
+                imagePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            var bitmapDecoder = BitmapDecoder.Create(
+                fileStream,
+                BitmapCreateOptions.PreservePixelFormat,
+                BitmapCacheOption.None);
+            if (bitmapDecoder.Frames.Count == 0)
+            {
+                return 1;
+            }
+
+            return ReadExifOrientation(bitmapDecoder.Frames[0].Metadata as BitmapMetadata);
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
+    private static BitmapSource ApplyExifOrientation(BitmapSource sourceBitmap, int orientation)
+    {
+        if (orientation <= 1 || orientation > 8)
+        {
+            return sourceBitmap;
+        }
+
+        return orientation switch
+        {
+            2 => BuildTransformedBitmap(sourceBitmap, new ScaleTransform(-1, 1)),
+            3 => BuildTransformedBitmap(sourceBitmap, new RotateTransform(180)),
+            4 => BuildTransformedBitmap(sourceBitmap, new ScaleTransform(1, -1)),
+            5 => BuildTransformedBitmap(sourceBitmap, BuildTransformGroup(new RotateTransform(90), new ScaleTransform(-1, 1))),
+            6 => BuildTransformedBitmap(sourceBitmap, new RotateTransform(90)),
+            7 => BuildTransformedBitmap(sourceBitmap, BuildTransformGroup(new RotateTransform(270), new ScaleTransform(-1, 1))),
+            8 => BuildTransformedBitmap(sourceBitmap, new RotateTransform(270)),
+            _ => sourceBitmap
+        };
+    }
+
+    private static BitmapSource BuildTransformedBitmap(BitmapSource sourceBitmap, Transform transform)
+    {
+        var transformedBitmap = new TransformedBitmap(sourceBitmap, transform);
+        transformedBitmap.Freeze();
+        return transformedBitmap;
+    }
+
+    private static TransformGroup BuildTransformGroup(params Transform[] transforms)
+    {
+        var transformGroup = new TransformGroup();
+        foreach (var transform in transforms)
+        {
+            transformGroup.Children.Add(transform);
+        }
+
+        return transformGroup;
     }
 
     private static List<StatusAffix> BuildStatusAffixes(IReadOnlyList<ReviewStatus> availableStatuses)
@@ -286,8 +397,8 @@ internal sealed class FinalReviewProcessor
     private readonly record struct StatusAffix(string FlagName, string PrefixToken, string SuffixToken);
 }
 
-internal sealed class FinalReviewThumbnailIndex
+internal sealed class ReviewThumbnailIndex
 {
-    public List<FinalReviewThumbnailItem> Items { get; init; } = new();
-    public List<FinalReviewThumbnailFilterItem> Filters { get; init; } = new();
+    public List<ReviewThumbnailItem> Items { get; init; } = new();
+    public List<ReviewThumbnailFilterItem> Filters { get; init; } = new();
 }

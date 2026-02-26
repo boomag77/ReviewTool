@@ -14,12 +14,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _originalImageLabel = "Original 0/0";
     private string _reviewingImageLabel = "Processed 0/0";
     private bool _isInitialReview;
-    private bool _isFinalReview;
+    private bool _isReview;
     private ObservableCollection<ImageFileItem> _originalFiles = new();
     private ImageFileItem? _selectedOriginalFile;
     private string _suggestedNumberLabel = string.Empty;
     private string _initialReviewButtonText = "Start Initial Review";
-    private string _finalReviewButtonText = "Start Final Review";
+    private string _reviewButtonText = "Start Review";
     private string _performMappingButtonText = "Perform mapping";
     private bool _isAutoFillEnabled;
     private string _targetFolderDisplayPath = string.Empty;
@@ -471,10 +471,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _isInitialReview, value);
     }
 
-    public bool IsFinalReview
+    public bool IsReview
     {
-        get => _isFinalReview;
-        set => SetField(ref _isFinalReview, value);
+        get => _isReview;
+        set => SetField(ref _isReview, value);
     }
 
     public bool IsAutoFillEnabled
@@ -506,10 +506,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         get => _performMappingButtonText;
     }
 
-    public string FinalReviewButtonText
+    public string ReviewButtonText
     {
-        get => _finalReviewButtonText;
-        set => SetField(ref _finalReviewButtonText, value);
+        get => _reviewButtonText;
+        set => SetField(ref _reviewButtonText, value);
     }
 
     public string SuggestedNumberLabel
