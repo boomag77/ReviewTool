@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Media;
@@ -13,6 +14,8 @@ internal sealed class ReviewProcessor
     private readonly FileProcessor _fileProcessor;
     private readonly Dictionary<int, string> _imagePathByThumbnailIndex = new();
 
+    private readonly ConcurrentDictionary<string, int> _exifOrientationCache = new();
+
     public ReviewProcessor(FileProcessor fileProcessor)
     {
         _fileProcessor = fileProcessor;
@@ -27,6 +30,7 @@ internal sealed class ReviewProcessor
                                                          IReadOnlyList<ReviewStatus> availableStatuses)
     {
         _imagePathByThumbnailIndex.Clear();
+        _exifOrientationCache.Clear();
         var statusAffixes = BuildStatusAffixes(availableStatuses);
         var thumbnailItems = new List<ReviewThumbnailItem>(imagePaths.Count);
         var detectedFlagCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -155,6 +159,11 @@ internal sealed class ReviewProcessor
 
             if (IsTiffFile(imagePath.AsSpan()))
             {
+                if (TryLoadTiffThumbnailFast(imagePath, _thumbnailHeightPx, out var fastTiffThumbnail))
+                {
+                    return fastTiffThumbnail;
+                }
+
                 var orientedBitmap = LoadBitmapFromPath(imagePath);
                 if (orientedBitmap is null)
                 {
@@ -193,6 +202,40 @@ internal sealed class ReviewProcessor
 
             return orientedThumbnail;
         }, cancellationToken);
+    }
+
+    private bool TryLoadTiffThumbnailFast(string imagePath, int targetHeightPx, out BitmapSource? thumbnailBitmap)
+    {
+        thumbnailBitmap = null;
+        if (targetHeightPx <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var fastTiffThumbnail = new BitmapImage();
+            fastTiffThumbnail.BeginInit();
+            fastTiffThumbnail.CacheOption = BitmapCacheOption.OnLoad;
+            fastTiffThumbnail.DecodePixelHeight = targetHeightPx;
+            fastTiffThumbnail.UriSource = new Uri(imagePath, UriKind.Absolute);
+            fastTiffThumbnail.EndInit();
+
+            var orientation = ReadExifOrientationFromFile(imagePath);
+            var orientedThumbnail = ApplyExifOrientation(fastTiffThumbnail, orientation);
+            if (!orientedThumbnail.IsFrozen)
+            {
+                orientedThumbnail.Freeze();
+            }
+
+            thumbnailBitmap = orientedThumbnail;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Fast TIFF thumbnail decode failed for '{imagePath}': {ex.Message}");
+            return false;
+        }
     }
 
     private static bool IsTiffFile(ReadOnlySpan<char> imagePathSpan)
@@ -241,8 +284,13 @@ internal sealed class ReviewProcessor
         return 1;
     }
 
-    private static int ReadExifOrientationFromFile(string imagePath)
+    private int ReadExifOrientationFromFile(string imagePath)
     {
+        if (_exifOrientationCache.TryGetValue(imagePath, out var cachedOrientation))
+        {
+            return cachedOrientation;
+        }
+
         try
         {
             using var fileStream = new FileStream(
@@ -259,7 +307,9 @@ internal sealed class ReviewProcessor
                 return 1;
             }
 
-            return ReadExifOrientation(bitmapDecoder.Frames[0].Metadata as BitmapMetadata);
+            var orientationValue = ReadExifOrientation(bitmapDecoder.Frames[0].Metadata as BitmapMetadata);
+            _exifOrientationCache[imagePath] = orientationValue;
+            return orientationValue;
         }
         catch
         {

@@ -7,6 +7,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -165,7 +166,7 @@ public partial class MainWindow : Window
         {
             _activeReviewMode = null;
             _viewModel.ActiveReviewMode = null;
-            _viewModel.ReviewButtonText = "Start Review...";
+            _viewModel.ReviewButtonText = "Start Review";
             return;
         }
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
@@ -242,7 +243,7 @@ public partial class MainWindow : Window
         _viewModel.IsInitialReview = true;
         _viewModel.ActiveReviewMode = ReviewMode.InitialReview;
         _viewModel.InitialReviewButtonText = "Finish Initial Review";
-        _viewModel.ReviewButtonText = "Start Review...";
+        _viewModel.ReviewButtonText = "Start Review";
         SetShowThumbnailsCheckBox(false);
         //_fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
         _suggestedNames.Clear();
@@ -353,7 +354,7 @@ public partial class MainWindow : Window
         _viewModel.ActiveReviewMode = null;
         _viewModel.TargetFolderDisplayPath = string.Empty;
         _viewModel.InitialReviewButtonText = "Start Initial Review...";
-        _viewModel.ReviewButtonText = "Start Review...";
+        _viewModel.ReviewButtonText = "Start Review";
         SetShowThumbnailsCheckBox(false);
         _lastSuggestedNumber = null;
         _suggestedNames.Clear();
@@ -653,7 +654,7 @@ public partial class MainWindow : Window
         ClearReviewState(clearProcessed: true);
         _activeReviewMode = null;
         _viewModel.ActiveReviewMode = null;
-        _viewModel.ReviewButtonText = "Start Review...";
+        _viewModel.ReviewButtonText = "Start Review";
         MessageBox.Show(this, "Review Finished", "Review Finished", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -2722,38 +2723,100 @@ public partial class MainWindow : Window
         var loadingCts = new CancellationTokenSource();
         _reviewThumbnailLoadCts = loadingCts;
         var cancellationToken = loadingCts.Token;
-        var maxParallelLoads = Math.Clamp(Environment.ProcessorCount / 2, 2, 6);
-        var loadThrottle = new SemaphoreSlim(maxParallelLoads, maxParallelLoads);
+        var maxParallelLoads = 2;
+        const int thumbnailUiBatchSize = 24;
+        const int thumbnailUiBatchDelayMs = 40;
 
         _ = Task.Run(async () =>
         {
-            var loadTasks = new List<Task>(thumbnailItems.Count);
-            foreach (var thumbnailItem in thumbnailItems)
+            var uiUpdatesChannel = Channel.CreateBounded<(ReviewThumbnailItem Item, BitmapSource? Bitmap)>(
+                new BoundedChannelOptions(thumbnailUiBatchSize * 8)
+                {
+                    SingleReader = true,
+                    SingleWriter = false,
+                    FullMode = BoundedChannelFullMode.Wait
+                });
+
+            async Task FlushBatchToUiAsync(List<(ReviewThumbnailItem Item, BitmapSource? Bitmap)> batch)
             {
-                if (cancellationToken.IsCancellationRequested)
+                if (batch.Count == 0)
                 {
                     return;
                 }
 
-                loadTasks.Add(Task.Run(async () =>
+                await Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return;
+                        }
+
+                        foreach (var (item, bitmap) in batch)
+                        {
+                            item.Thumbnail = bitmap;
+                        }
+                    },
+                    DispatcherPriority.Background);
+
+                batch.Clear();
+            }
+
+            var uiConsumerTask = Task.Run(async () =>
+            {
+                var batch = new List<(ReviewThumbnailItem Item, BitmapSource? Bitmap)>(thumbnailUiBatchSize);
+                var reader = uiUpdatesChannel.Reader;
+                while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    try
+                    while (batch.Count < thumbnailUiBatchSize && reader.TryRead(out var uiUpdate))
                     {
-                        await loadThrottle.WaitAsync(cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        return;
+                        batch.Add(uiUpdate);
                     }
 
-                    try
+                    await FlushBatchToUiAsync(batch).ConfigureAwait(false);
+                    await Task.Delay(thumbnailUiBatchDelayMs, cancellationToken).ConfigureAwait(false);
+                }
+
+                while (reader.TryRead(out var uiUpdate))
+                {
+                    batch.Add(uiUpdate);
+                    if (batch.Count >= thumbnailUiBatchSize)
                     {
-                        BitmapSource? thumbnailBitmap;
+                        await FlushBatchToUiAsync(batch).ConfigureAwait(false);
+                    }
+                }
+
+                await FlushBatchToUiAsync(batch).ConfigureAwait(false);
+            }, cancellationToken);
+
+            var writer = uiUpdatesChannel.Writer;
+            async Task WriteUiUpdateAsync(ReviewThumbnailItem item, BitmapSource? bitmap)
+            {
+                await writer.WriteAsync((item, bitmap), cancellationToken).ConfigureAwait(false);
+            }
+
+            var nextItemPosition = -1;
+            var workerCount = Math.Min(maxParallelLoads, thumbnailItems.Count);
+            var workers = new List<Task>(workerCount);
+            for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
+            {
+                workers.Add(Task.Run(async () =>
+                {
+                    while (!cancellationToken.IsCancellationRequested)
+                    {
+                        var currentItemPosition = Interlocked.Increment(ref nextItemPosition);
+                        if (currentItemPosition >= thumbnailItems.Count)
+                        {
+                            return;
+                        }
+
+                        var thumbnailItem = thumbnailItems[currentItemPosition];
                         try
                         {
-                            thumbnailBitmap = await _reviewProcessor
+                            var thumbnailBitmap = await _reviewProcessor
                                 .LoadThumbnailForThumbnailIndexAsync(thumbnailItem.Index, cancellationToken)
                                 .ConfigureAwait(false);
+                            await WriteUiUpdateAsync(thumbnailItem, thumbnailBitmap).ConfigureAwait(false);
                         }
                         catch (OperationCanceledException)
                         {
@@ -2762,49 +2825,21 @@ public partial class MainWindow : Window
                         catch (Exception ex)
                         {
                             Debug.WriteLine($"Failed to lazy-load thumbnail for index {thumbnailItem.Index}: {ex.Message}");
-                            return;
                         }
-
-                        if (cancellationToken.IsCancellationRequested)
-                        {
-                            return;
-                        }
-
-                        try
-                        {
-                            await Dispatcher.InvokeAsync(
-                                () =>
-                                {
-                                    if (!cancellationToken.IsCancellationRequested)
-                                    {
-                                        thumbnailItem.Thumbnail = thumbnailBitmap;
-                                    }
-                                },
-                                DispatcherPriority.Background);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            return;
-                        }
-                    }
-                    finally
-                    {
-                        loadThrottle.Release();
                     }
                 }, cancellationToken));
             }
 
             try
             {
-                await Task.WhenAll(loadTasks).ConfigureAwait(false);
+                await Task.WhenAll(workers).ConfigureAwait(false);
+                writer.TryComplete();
+                await uiConsumerTask.ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
+                writer.TryComplete();
                 return;
-            }
-            finally
-            {
-                loadThrottle.Dispose();
             }
         }, cancellationToken);
     }

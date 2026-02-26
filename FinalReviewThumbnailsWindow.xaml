@@ -165,6 +165,8 @@
                  Background="#101318"
                  BorderThickness="0"
                  Foreground="#F1F4F8"
+                 VirtualizingPanel.IsVirtualizing="True"
+                 ScrollViewer.CanContentScroll="False"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  SelectionChanged="ThumbnailsList_SelectionChanged">
             <ListBox.ItemContainerStyle>
@@ -194,11 +196,11 @@
                         <Border Background="#0E1218"
                                 BorderBrush="#2A2F38"
                                 BorderThickness="1"
-                                Width="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ThumbnailTileWidth}"
+                                Width="{Binding ThumbnailFrameWidth}"
                                 Height="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ThumbnailTileHeight}"
                                 HorizontalAlignment="Center">
                             <Border ClipToBounds="True">
-                                <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
+                                <Image Source="{Binding Thumbnail}" Stretch="Uniform"/>
                             </Border>
                         </Border>
                         <TextBlock Text="{Binding Label}"

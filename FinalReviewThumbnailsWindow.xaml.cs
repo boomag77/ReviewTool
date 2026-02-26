@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -10,6 +11,9 @@ namespace ReviewTool;
 
 public partial class ReviewThumbnailsWindow : Window
 {
+    private const double PortraitTileAspectRatio = 68d / 104d;
+    private const double MaxLandscapeTileWidthFactor = 1.35d;
+    private const double ThumbnailItemHorizontalPaddingPx = 10d;
     public event Action<int>? ThumbnailSelected;
     public event Action<int>? ThumbnailSizeChanged;
     public event Action<int>? ThumbnailMaxSizeChanged;
@@ -21,6 +25,7 @@ public partial class ReviewThumbnailsWindow : Window
     public ObservableCollection<ReviewThumbnailFilterItem> Filters { get; } = new();
     private ICollectionView? _itemsView;
     private string? _activeFilterFlagName;
+    private bool _isClosed;
 
     public double ThumbnailTileWidth
     {
@@ -69,15 +74,32 @@ public partial class ReviewThumbnailsWindow : Window
         SetThumbnailMaxSize((int)Math.Round(ThumbnailSizeSlider.Maximum, MidpointRounding.AwayFromZero));
     }
 
-    public void SetItems(IEnumerable<ReviewThumbnailItem> items)
+    public void SetItems(IEnumerable<ReviewThumbnailItem> items, CancellationToken cancellationToken = default)
     {
+        if (_isClosed || cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
         Items.Clear();
         foreach (var item in items)
         {
+            if (_isClosed || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            item.SetPortraitFrameWidth(ThumbnailTileWidth);
             Items.Add(item);
         }
 
         _itemsView?.Refresh();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _isClosed = true;
+        base.OnClosed(e);
     }
 
     public void SetFilters(IEnumerable<ReviewThumbnailFilterItem> filters)
@@ -249,35 +271,85 @@ public partial class ReviewThumbnailsWindow : Window
     private void ApplyThumbnailMetrics(int thumbnailHeightPx)
     {
         ThumbnailTileHeight = thumbnailHeightPx;
-        ThumbnailTileWidth = Math.Round(thumbnailHeightPx * 68d / 104d, MidpointRounding.AwayFromZero);
-        ThumbnailItemWidth = ThumbnailTileWidth + 10d;
+        ThumbnailTileWidth = Math.Round(thumbnailHeightPx * PortraitTileAspectRatio, MidpointRounding.AwayFromZero);
+        ThumbnailItemWidth = Math.Round((ThumbnailTileWidth * MaxLandscapeTileWidthFactor) + ThumbnailItemHorizontalPaddingPx,
+            MidpointRounding.AwayFromZero);
+        foreach (var item in Items)
+        {
+            item.SetPortraitFrameWidth(ThumbnailTileWidth);
+        }
     }
 }
 
 public sealed class ReviewThumbnailItem : INotifyPropertyChanged
 {
+    private const double LandscapeRatioThreshold = 1.15d;
+    private const double MaxLandscapeWidthFactor = 1.35d;
+
     public int Index { get; init; }
     public string Label { get; init; } = string.Empty;
     private BitmapSource? _thumbnail;
+    private double _portraitFrameWidth = 68d;
+    private double _thumbnailFrameWidth = 68d;
     public BitmapSource? Thumbnail
     {
         get => _thumbnail;
-        set => SetField(ref _thumbnail, value);
+        set
+        {
+            if (SetField(ref _thumbnail, value))
+            {
+                UpdateThumbnailFrameWidth();
+            }
+        }
     }
+
+    public double ThumbnailFrameWidth
+    {
+        get => _thumbnailFrameWidth;
+        private set => SetField(ref _thumbnailFrameWidth, value);
+    }
+
     public string FilePath { get; init; } = string.Empty;
     public string? FlagName { get; init; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    public void SetPortraitFrameWidth(double portraitFrameWidth)
     {
-        if (EqualityComparer<T>.Default.Equals(field, value))
+        if (portraitFrameWidth <= 0)
         {
             return;
         }
 
+        _portraitFrameWidth = portraitFrameWidth;
+        UpdateThumbnailFrameWidth();
+    }
+
+    private void UpdateThumbnailFrameWidth()
+    {
+        var widthFactor = 1d;
+        if (_thumbnail is not null && _thumbnail.PixelWidth > 0 && _thumbnail.PixelHeight > 0)
+        {
+            var aspectRatio = _thumbnail.PixelWidth / (double)_thumbnail.PixelHeight;
+            if (aspectRatio > LandscapeRatioThreshold)
+            {
+                widthFactor = Math.Min(MaxLandscapeWidthFactor, aspectRatio / LandscapeRatioThreshold);
+            }
+        }
+
+        ThumbnailFrameWidth = Math.Round(_portraitFrameWidth * widthFactor, MidpointRounding.AwayFromZero);
+    }
+
+    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return false;
+        }
+
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        return true;
     }
 }
 
