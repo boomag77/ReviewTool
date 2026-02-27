@@ -29,11 +29,12 @@ internal sealed class ReviewProcessor
     public ReviewThumbnailIndex BuildThumbnailIndex(IReadOnlyList<string> imagePaths,
                                                          IReadOnlyList<ReviewStatus> availableStatuses)
     {
+        _ = availableStatuses;
         _imagePathByThumbnailIndex.Clear();
         _exifOrientationCache.Clear();
-        var statusAffixes = BuildStatusAffixes(availableStatuses);
         var thumbnailItems = new List<ReviewThumbnailItem>(imagePaths.Count);
-        var detectedFlagCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var detectedFilterCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var filterLabelByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < imagePaths.Count; index++)
         {
             var imagePath = imagePaths[index];
@@ -44,7 +45,7 @@ internal sealed class ReviewProcessor
 
             var fileNameWithExtension = Path.GetFileName(imagePath);
             var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(imagePath);
-            var matchedFlagName = DetectFlagNameFromFileName(fileNameWithoutExtension, statusAffixes);
+            var detectedFilter = DetectFilterFromFileName(fileNameWithoutExtension);
             _imagePathByThumbnailIndex[index] = imagePath;
             thumbnailItems.Add(new ReviewThumbnailItem
             {
@@ -52,13 +53,14 @@ internal sealed class ReviewProcessor
                 Label = fileNameWithExtension,
                 FilePath = imagePath,
                 Thumbnail = null,
-                FlagName = matchedFlagName
+                FlagName = detectedFilter?.FilterKey
             });
 
-            if (!string.IsNullOrWhiteSpace(matchedFlagName))
+            if (detectedFilter is not null)
             {
-                detectedFlagCounts.TryGetValue(matchedFlagName, out var count);
-                detectedFlagCounts[matchedFlagName] = count + 1;
+                detectedFilterCounts.TryGetValue(detectedFilter.Value.FilterKey, out var count);
+                detectedFilterCounts[detectedFilter.Value.FilterKey] = count + 1;
+                filterLabelByKey[detectedFilter.Value.FilterKey] = detectedFilter.Value.FilterTitle;
             }
         }
 
@@ -70,12 +72,13 @@ internal sealed class ReviewProcessor
                 ButtonLabel = $"All ({thumbnailItems.Count})"
             }
         };
-        foreach (var kv in detectedFlagCounts.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+        foreach (var filterKey in detectedFilterCounts.Keys
+                     .OrderBy(key => filterLabelByKey[key], StringComparer.OrdinalIgnoreCase))
         {
             filters.Add(new ReviewThumbnailFilterItem
             {
-                FlagName = kv.Key,
-                ButtonLabel = $"{kv.Key} ({kv.Value})"
+                FlagName = filterKey,
+                ButtonLabel = $"{filterLabelByKey[filterKey]} ({detectedFilterCounts[filterKey]})"
             });
         }
 
@@ -84,6 +87,77 @@ internal sealed class ReviewProcessor
             Items = thumbnailItems,
             Filters = filters
         };
+    }
+
+    private static DetectedThumbnailFilter? DetectFilterFromFileName(string fileNameWithoutExtension)
+    {
+        if (string.IsNullOrWhiteSpace(fileNameWithoutExtension))
+        {
+            return null;
+        }
+
+        var prefixToken = ExtractPrefixToken(fileNameWithoutExtension);
+        var suffixToken = ExtractSuffixToken(fileNameWithoutExtension);
+
+        if (IsTextAffixToken(suffixToken))
+        {
+            return new DetectedThumbnailFilter($"suffix:{suffixToken}", suffixToken);
+        }
+
+        if (IsTextAffixToken(prefixToken))
+        {
+            return new DetectedThumbnailFilter($"prefix:{prefixToken}", prefixToken);
+        }
+
+        return null;
+    }
+
+    private static string ExtractPrefixToken(string fileNameWithoutExtension)
+    {
+        var separatorIndex = fileNameWithoutExtension.IndexOf('_');
+        if (separatorIndex <= 0)
+        {
+            return string.Empty;
+        }
+
+        var rawPrefix = fileNameWithoutExtension[..separatorIndex];
+        return NormalizeAffixToken(rawPrefix);
+    }
+
+    private static string ExtractSuffixToken(string fileNameWithoutExtension)
+    {
+        var separatorIndex = fileNameWithoutExtension.LastIndexOf('_');
+        if (separatorIndex < 0 || separatorIndex >= fileNameWithoutExtension.Length - 1)
+        {
+            return string.Empty;
+        }
+
+        var rawSuffix = fileNameWithoutExtension[(separatorIndex + 1)..];
+        return NormalizeAffixToken(rawSuffix);
+    }
+
+    private static bool IsTextAffixToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+
+        var hasLetter = false;
+        foreach (var character in token)
+        {
+            if (char.IsDigit(character))
+            {
+                return false;
+            }
+
+            if (char.IsLetter(character))
+            {
+                hasLetter = true;
+            }
+        }
+
+        return hasLetter;
     }
 
     public Task<BitmapSource?> LoadBitmapForThumbnailIndexAsync(int thumbnailIndex, CancellationToken cancellationToken)
@@ -445,6 +519,7 @@ internal sealed class ReviewProcessor
     }
 
     private readonly record struct StatusAffix(string FlagName, string PrefixToken, string SuffixToken);
+    private readonly record struct DetectedThumbnailFilter(string FilterKey, string FilterTitle);
 }
 
 internal sealed class ReviewThumbnailIndex
