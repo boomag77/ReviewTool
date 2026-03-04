@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ReviewTool"
+        xmlns:models="clr-namespace:ReviewTool.Models"
         mc:Ignorable="d"
         Title="ReviewTool v2.0  " Height="720" Width="1200" MinHeight="640" MinWidth="980"
         Background="LightGray"
@@ -254,7 +255,7 @@
                             <Style TargetType="CheckBox">
                                 <Setter Property="Visibility" Value="Collapsed" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ActiveReviewMode}" Value="{x:Static local:ReviewMode.Review}">
+                                    <DataTrigger Binding="{Binding ActiveReviewMode}" Value="{x:Static models:ReviewMode.Review}">
                                         <Setter Property="Visibility" Value="Visible" />
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -318,7 +319,7 @@
                         <Style TargetType="ColumnDefinition">
                             <Setter Property="Width" Value="Auto" />
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding ActiveReviewMode}" Value="{x:Static local:ReviewMode.Review}">
+                                <DataTrigger Binding="{Binding ActiveReviewMode}" Value="{x:Static models:ReviewMode.Review}">
                                     <Setter Property="Width" Value="0" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding IsExpanded, ElementName=ActionsExpander}" Value="False">
@@ -485,7 +486,7 @@
                     <Style TargetType="Border">
                         <Setter Property="Visibility" Value="Visible" />
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding ActiveReviewMode}" Value="{x:Static local:ReviewMode.Review}">
+                            <DataTrigger Binding="{Binding ActiveReviewMode}" Value="{x:Static models:ReviewMode.Review}">
                                 <Setter Property="Visibility" Value="Collapsed" />
                             </DataTrigger>
                         </Style.Triggers>

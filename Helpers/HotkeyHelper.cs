@@ -1,6 +1,6 @@
 using System.Windows.Input;
 
-namespace ReviewTool;
+namespace ReviewTool.Helpers;
 
 public static class HotkeyHelper
 {

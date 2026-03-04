@@ -1,4 +1,4 @@
-namespace ReviewTool;
+namespace ReviewTool.Models;
 
 public enum ReviewMode
 {

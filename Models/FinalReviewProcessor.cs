@@ -3,20 +3,21 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using ReviewTool.Interfaces;
 
-namespace ReviewTool;
+namespace ReviewTool.Models;
 
 internal sealed class ReviewProcessor
 {
     private const int MinThumbnailHeightPx = 48;
     private int _thumbnailHeightPx = 104;
 
-    private readonly FileProcessor _fileProcessor;
+    private readonly IFileProcessor _fileProcessor;
     private readonly Dictionary<int, string> _imagePathByThumbnailIndex = new();
 
     private readonly ConcurrentDictionary<string, int> _exifOrientationCache = new();
 
-    public ReviewProcessor(FileProcessor fileProcessor)
+    public ReviewProcessor(IFileProcessor fileProcessor)
     {
         _fileProcessor = fileProcessor;
     }

@@ -4,7 +4,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 
-namespace ReviewTool;
+namespace ReviewTool.Models;
 
 public struct ReviewStatusFlag
 {

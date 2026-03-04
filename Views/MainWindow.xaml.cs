@@ -1,4 +1,6 @@
 using Microsoft.Win32;
+using ReviewTool.Helpers;
+using ReviewTool.Models;
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -15,6 +17,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using ReviewTool.Interfaces;
 
 namespace ReviewTool;
 
@@ -31,16 +34,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private struct ReviewStat
-    {
-        public string[] NotReviewedPages;
-        public string[] ApprovedPages;
-        public string[] BadOriginalPages;
-        public string[] RescanPages;
-        public string[] SavedPages;
-        public int[] MissingPages;
-        public int MaxPageNumber;
-    }
+
 
     private readonly struct StatusButtonContext
     {
@@ -58,8 +52,9 @@ public partial class MainWindow : Window
 
     private readonly MainWindowViewModel _viewModel = new();
     private readonly InitialReviewProcessor _initialReviewProcessor;
-    private readonly FileProcessor _fileProcessor = new();
+    private readonly IFileProcessor _fileProcessor;
     private readonly ReviewProcessor _reviewProcessor;
+
 
     private readonly CurrentFolderIndex _originalFolderIndex;
     private readonly CurrentFolderIndex _processedFolderIndex;
@@ -99,12 +94,19 @@ public partial class MainWindow : Window
 
     private string? _currentReviewerName;
 
-    public MainWindow()
+    public MainWindow() : this(new FileProcessor())
+    {   
+    }
+
+    internal MainWindow(IFileProcessor fileProcessor)
     {
+        ArgumentNullException.ThrowIfNull(fileProcessor);
+        _fileProcessor = fileProcessor;
+
         InitializeComponent();
 
         _initialReviewProcessor = new InitialReviewProcessor(_viewModel);
-        _reviewProcessor = new ReviewProcessor(_fileProcessor);
+        _reviewProcessor = new ReviewProcessor(fileProcessor);
         DataContext = _viewModel;
         TryLoadPersistedReviewStatuses();
         TryLoadPersistedReviewThumbnailSettings();
@@ -273,10 +275,10 @@ public partial class MainWindow : Window
         {
             return;
         }
-        ReviewStat capturedtaskResult = new();
+        ReviewFolderStat capturedtaskResult = new();
         if (_capturedMappingInfo.Count == 0)
         {
-            (ReviewStat taskResult, List<ImageFileMappingInfo> mappingInfo) = await CreateInitialReviewResultAsync();
+            (ReviewFolderStat taskResult, List<ImageFileMappingInfo> mappingInfo) = await CreateInitialReviewResultAsync();
             capturedtaskResult = taskResult;
             _capturedMappingInfo = mappingInfo;
         }
@@ -712,7 +714,6 @@ public partial class MainWindow : Window
         await AdvanceToIndexAsync(idx);
         TraceInput($"SelectionChanged end idx={_currentImageIndex}");
     }
-
 
     private void AddEditCustomFlags_Click(object sender, RoutedEventArgs e)
     {
@@ -1703,17 +1704,7 @@ public partial class MainWindow : Window
         return int.TryParse(s.Slice(0, prefixLen), out value);
     }
 
-    private struct ImageFileMappingInfo
-    {
-        public string OriginalName;
-        public string NewName;
-        public string ReviewStatus;
-        public string RejectReason;
-        public string ReviewDate;
-        public string? ReviewerName;
-    }
-
-    private async Task<(ReviewStat folderStat, List<ImageFileMappingInfo>)> CreateInitialReviewResultAsync()
+    private async Task<(ReviewFolderStat folderStat, List<ImageFileMappingInfo>)> CreateInitialReviewResultAsync()
     {
         string date = DateTime.UtcNow.ToString("MM-dd-yyyy HH:mm 'UTC'");
 
@@ -1817,7 +1808,7 @@ public partial class MainWindow : Window
                 missingPages.Add(i);
             }
         }
-        return (new ReviewStat
+        return (new ReviewFolderStat
         {
             NotReviewedPages = notReviewedPages.ToArray(),
             ApprovedPages = approvedPages.ToArray(),
@@ -1830,7 +1821,7 @@ public partial class MainWindow : Window
     }
 
 
-    private bool TryCreateAndSaveTsvFile(ReviewStat folderStat, List<ImageFileMappingInfo> mappingInfo, string? pathToSave = null, bool namesWithExt = false)
+    private bool TryCreateAndSaveTsvFile(ReviewFolderStat folderStat, List<ImageFileMappingInfo> mappingInfo, string? pathToSave = null, bool namesWithExt = false)
     {
 
         static string Sanitize(string? value)
@@ -1992,7 +1983,7 @@ public partial class MainWindow : Window
         }
 
         var folderFilesNoExtSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var originalFilesPaths = _fileProcessor.ListImageFiles(originalImagesFolderPath);
+        var originalFilesPaths = _fileProcessor.GetImageFilesInDirectory(originalImagesFolderPath);
         foreach (var path in originalFilesPaths)
         {
             var nameNoExt = Path.GetFileNameWithoutExtension(path);
@@ -2948,7 +2939,7 @@ public partial class MainWindow : Window
 
     private void LoadOriginalFilesList(string folderPath)
     {
-        var files = _fileProcessor.ListImageFiles(folderPath);
+        var files = _fileProcessor.GetImageFilesInDirectory(folderPath);
         var items = files.Select(path => new ImageFileItem(path));
         _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>(items);
         _viewModel.SelectedOriginalFile = null;
@@ -3246,7 +3237,7 @@ public partial class MainWindow : Window
             await Task.Run(() =>
             {
                 var files = Directory.EnumerateFiles(folderPath)
-                                 .Where(_owner._fileProcessor.IsSupportedImage)
+                                 .Where(_owner._fileProcessor.IsSupportedImageFile)
                                  .OrderBy(f => Path.GetFileName(f), ExplorerComparer.Instance);
                 var tmpFolderIndex = new Dictionary<int, string>();
                 var tmpFolderIndexByPath = new Dictionary<string, int>();

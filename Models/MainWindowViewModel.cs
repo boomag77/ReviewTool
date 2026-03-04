@@ -1,9 +1,11 @@
+using ReviewTool.Helpers;
+using ReviewTool.Interfaces;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media.Imaging;
 
-namespace ReviewTool;
+namespace ReviewTool.Models;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged
 {
@@ -74,6 +76,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public IReadOnlyList<ReviewStatus> RequiredReviewStatuses => _requiredReviewStatuses;
     public ReadOnlyObservableCollection<ReviewStatus> CustomReviewStatuses { get; }
     public int MaxCustomStatuses => MaxCustomStatusesCount;
+
 
 
     public MainWindowViewModel()

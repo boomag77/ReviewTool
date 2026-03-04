@@ -1,4 +1,4 @@
-namespace ReviewTool;
+namespace ReviewTool.Models;
 
 internal sealed class InitialReviewProcessor
 {

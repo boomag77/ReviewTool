@@ -5,10 +5,11 @@ using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using ReviewTool.Interfaces;
 
-namespace ReviewTool;
+namespace ReviewTool.Models;
 
-public sealed class FileProcessor
+public sealed class FileProcessor : IFileProcessor
 {
 
 
@@ -72,7 +73,7 @@ public sealed class FileProcessor
     public async Task<int> GetMaxDigitsInImageFiles(string folderPath)
     {
         var maxDigits = 0;
-        var imageFiles = ListImageFiles(folderPath);
+        var imageFiles = GetImageFilesInDirectory(folderPath);
         foreach (var file in imageFiles)
         {
             var name = Path.GetFileNameWithoutExtension(file);
@@ -96,15 +97,15 @@ public sealed class FileProcessor
         return maxDigits;
     }
 
-    public bool IsSupportedImage(string filePath)
+    public bool IsSupportedImageFile(string filePath)
     {
         return _imageExtensions.Contains(Path.GetExtension(filePath));
     }
 
-    public IReadOnlyList<string> ListImageFiles(string folderPath)
+    public IReadOnlyList<string> GetImageFilesInDirectory(string folderPath)
     {
         return Directory.EnumerateFiles(folderPath)
-            .Where(IsSupportedImage)
+            .Where(IsSupportedImageFile)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
