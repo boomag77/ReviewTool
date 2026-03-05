@@ -19,6 +19,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ReviewTool.Interfaces;
 using ReviewTool.Services;
+using System.Windows.Media.Converters;
 
 namespace ReviewTool;
 
@@ -95,6 +96,8 @@ public partial class MainWindow : Window
 
     private string? _currentReviewerName;
 
+    private readonly IUserDialogService _userDialogService;
+
     public MainWindow() : this(new MainWindowViewModel(), new FileProcessor())
     {   
     }
@@ -103,6 +106,8 @@ public partial class MainWindow : Window
     {
         ArgumentNullException.ThrowIfNull(fileProcessor);
         ArgumentNullException.ThrowIfNull(viewModel);
+
+        _userDialogService = new UserDialogService(this);
 
         _fileProcessor = fileProcessor;
         _viewModel = viewModel;
@@ -308,11 +313,45 @@ public partial class MainWindow : Window
                 _fileProcessor.ClearDirectory(initialFolderPath);
             }
 
-            _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(_originalFolderPath);
-            if (!await TryPerformMappingToAsync(_originalFolderPath, _capturedMappingInfo))
-            {
-                MessageBox.Show(this, "Failed to perform mapping.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            //_initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(_originalFolderPath);
 
+            var statusAffixResolver = new StatusAffixResolver(_viewModel.RequiredReviewStatuses,
+                                                            _viewModel.CustomReviewStatuses);
+            using var mappingProcessor = new MappingProcessor(_fileProcessor, _userDialogService, statusAffixResolver);
+            var mappingCts = new CancellationTokenSource();
+            Window? progressWindow = CreateMappingProgressDialog(0, mappingCts);
+
+            string? completedSummary = null;
+            string? completedReport = null;
+
+            Action<string, string> OnMappingCompleted = (summary, report) =>
+            {
+                completedSummary = summary;
+                completedReport = report;
+            };
+            Action<int, int> onMappingProgressUpdated = (mapped, total) =>
+            {
+                if (progressWindow is null)
+                {
+                    return;
+                }
+
+                if (progressWindow.Dispatcher.CheckAccess())
+                {
+                    UpdateMappingProgress(progressWindow, mapped, total);
+                    return;
+                }
+
+                progressWindow.Dispatcher.BeginInvoke(() =>
+                    UpdateMappingProgress(progressWindow, mapped, total));
+            };
+            mappingProcessor.MappingProgressUpdated += onMappingProgressUpdated;
+            mappingProcessor.MappingCompleted += OnMappingCompleted;
+            progressWindow?.Show();
+            bool mappingSuccess = await mappingProcessor.TryPerformMappingToAsync(_originalFolderPath, _capturedMappingInfo, mappingCts);
+            progressWindow?.Close();
+            if (!mappingSuccess)
+            {
                 return;
             }
             var originalFolderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(_originalFolderPath)) ?? "mapping_file";
@@ -320,7 +359,7 @@ public partial class MainWindow : Window
             var mappingFilePath = Path.Combine(_originalFolderPath, fileName);
             if (!TryCreateAndSaveTsvFile(capturedtaskResult, _capturedMappingInfo, mappingFilePath))
             {
-                MessageBox.Show(this, "Failed to create or save mapping file.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                _userDialogService.ShowError("Failed to create or save mapping file.", "Error");
 
             }
 
@@ -329,7 +368,7 @@ public partial class MainWindow : Window
         {
             if (!TryCreateAndSaveTsvFile(capturedtaskResult, _capturedMappingInfo))
             {
-                MessageBox.Show(this, "Failed to create or save mapping file.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                _userDialogService.ShowError("Failed to create or save mapping file.", "Error");
                 return;
             }
         }
@@ -984,14 +1023,14 @@ public partial class MainWindow : Window
             var (bookName, mappingInfo) = ParseMappingInfoFrom(mappingFilePath);
             if (mappingInfo.Count == 0)
             {
-                MessageBox.Show(this, "Mapping file is empty or invalid.", "Mapping", MessageBoxButton.OK, MessageBoxImage.Warning);
+                _userDialogService.ShowWarning("Mapping file is empty or invalid.", "Mapping");
                 return;
             }
             await TryPerformMappingForFolderAsync(originalFolder, bookName, mappingInfo);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _userDialogService.ShowError($"An error occurred:\n{ex.Message}", "Error");
         }
         finally
         {
@@ -1017,7 +1056,7 @@ public partial class MainWindow : Window
             var (bookName, mappingInfo) = ParseMappingInfoFrom(mappingFilePath);
             if (mappingInfo.Count == 0)
             {
-                MessageBox.Show(this, "Mapping file is empty or invalid.", "Mapping", MessageBoxButton.OK, MessageBoxImage.Warning);
+                _userDialogService.ShowWarning("Mapping file is empty or invalid.", "Mapping");
                 return;
             }
 
@@ -1034,16 +1073,13 @@ public partial class MainWindow : Window
 
             _originalFolderPath = previousOriginalFolderPath;
 
-            MessageBox.Show(
-                this,
+            _userDialogService.ShowInfo(
                 $"Mapped folders: {mappedFoldersCount}/{selectedFolders.Count}",
-                "Mapping",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                "Mapping");
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _userDialogService.ShowError($"An error occurred:\n{ex.Message}", "Error");
         }
     }
 
@@ -1070,11 +1106,9 @@ public partial class MainWindow : Window
             return false;
         }
 
-        _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolderPath);
-        var userDialogService = new UserDialogService(this);
         var statusAffixResolver = new StatusAffixResolver(_viewModel.RequiredReviewStatuses,
                                                             _viewModel.CustomReviewStatuses);
-        using var mappingProcessor = new MappingProcessor(_fileProcessor, userDialogService, statusAffixResolver);
+        using var mappingProcessor = new MappingProcessor(_fileProcessor, _userDialogService, statusAffixResolver);
         var mappingCts = new CancellationTokenSource();
         Window? progressWindow = CreateMappingProgressDialog(0, mappingCts);
 
@@ -1104,12 +1138,12 @@ public partial class MainWindow : Window
         };
         mappingProcessor.MappingProgressUpdated += onMappingProgressUpdated;
         mappingProcessor.MappingCompleted += OnMappingCompleted;
+
         bool mappingResult = false;
         try
         {
             progressWindow?.Show();
             mappingResult = await mappingProcessor.TryPerformMappingToAsync(originalFolderPath,
-                                                                            _initialReviewFolder,
                                                                             mappingInfo,
                                                                             mappingCts);
         }
@@ -1138,12 +1172,14 @@ public partial class MainWindow : Window
         {
             return true;
         }
-
-        var result = MessageBox.Show(this,
-            $"The mapping file was created for \"{mappingBookName}\", but the selected folder is \"{selectedFolderName}\". Do you want to proceed?",
-            "Mapping",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+        //_
+        //var result = MessageBox.Show(this,
+        //    $"The mapping file was created for \"{mappingBookName}\", but the selected folder is \"{selectedFolderName}\". Do you want to proceed?",
+        //    "Mapping",
+        //    MessageBoxButton.YesNo,
+        //    MessageBoxImage.Question);
+        var result = _userDialogService.ShowQuestion($"The mapping file was created for \"{mappingBookName}\", but the selected folder is \"{selectedFolderName}\". Do you want to proceed?",
+            "Mapping");
         return result == MessageBoxResult.Yes;
     }
 
@@ -1155,12 +1191,14 @@ public partial class MainWindow : Window
             return true;
         }
 
-        var result = MessageBox.Show(this,
-            $"{Path.GetFileName(initialReviewFolderPath)} already exists. Do you want to proceed?",
-            "Initial Review",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Question);
-        return result == MessageBoxResult.OK;
+        //var result = MessageBox.Show(this,
+        //    $"{Path.GetFileName(initialReviewFolderPath)} already exists. Do you want to proceed?",
+        //    "Initial Review",
+        //    MessageBoxButton.OKCancel,
+        //    MessageBoxImage.Question);
+        var result = _userDialogService.ShowQuestion($"{Path.GetFileName(initialReviewFolderPath)} already exists. Do you want to proceed?",
+            "Initial Review");
+        return result == MessageBoxResult.Yes;
     }
 
     private void PerformMappingDropdownButton_Click(object sender, RoutedEventArgs e)

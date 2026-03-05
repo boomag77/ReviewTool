@@ -14,7 +14,9 @@ namespace ReviewTool.Services
             MessageBox.Show(_owner, text, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         public void ShowInfo(string text, string title) =>
-            MessageBox.Show(_owner, text, title, MessageBoxButton.OK, MessageBoxImage.Information);      
+            MessageBox.Show(_owner, text, title, MessageBoxButton.OK, MessageBoxImage.Information);
+        public void ShowWarning(string text, string title) =>
+            MessageBox.Show(_owner, text, title, MessageBoxButton.OK, MessageBoxImage.Warning);
         public void ShowError(string text, string title) =>
             MessageBox.Show(_owner, text, title, MessageBoxButton.OK, MessageBoxImage.Error);
     }

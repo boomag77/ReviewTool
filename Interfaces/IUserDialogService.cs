@@ -6,6 +6,7 @@ namespace ReviewTool.Interfaces
     {
         MessageBoxResult ShowQuestion(string text, string title);
         void ShowInfo(string text, string title);
+        void ShowWarning(string text, string title);
         void ShowError(string text, string title);
     }
 }
