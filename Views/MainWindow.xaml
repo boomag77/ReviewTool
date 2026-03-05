@@ -238,6 +238,10 @@
                                 <MenuItem Style="{StaticResource PerformMappingContextMenuItemStyle}"
                                           Header="to Multiple folders"
                                           Click="PerformMappingToMultipleFolders_Click" />
+                                <Separator Style="{StaticResource PerformMappingMenuDividerStyle}" />
+                                <MenuItem Style="{StaticResource PerformMappingContextMenuItemStyle}"
+                                          Header="Bulk mapping"
+                                          Click="BulkMapping_Click" />
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>

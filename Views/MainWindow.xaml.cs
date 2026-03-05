@@ -1083,6 +1083,10 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BulkMapping_Click(object sender, RoutedEventArgs e)
+    {
+    }
+
 
     private async Task<bool> TryPerformMappingForFolderAsync(
         string originalFolderPath,
