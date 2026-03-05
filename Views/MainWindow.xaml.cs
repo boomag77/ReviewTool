@@ -1086,25 +1086,36 @@ public partial class MainWindow : Window
     private async void BulkMapping_Click(object sender, RoutedEventArgs e)
     {
         string rootFolderPath = _userDialogService.SelectFolder("Select root folder with folders to map", null);
-        string tsvFilesFolderPath = _userDialogService.SelectFolder("Select folder with TSV files", null); 
+        string tsvFilesFolderPath = _userDialogService.SelectFolder("Select folder with TSV files", null);
         if (string.IsNullOrWhiteSpace(rootFolderPath) || string.IsNullOrWhiteSpace(tsvFilesFolderPath))
         {
             _userDialogService.ShowWarning("Both root folder and TSV files folder must be selected.", "Bulk Mapping");
             return;
         }
+        var tsvFiles = Directory.GetFiles(tsvFilesFolderPath, "*.tsv");
+        if (tsvFiles.Length == 0)
+        {
+            _userDialogService.ShowWarning("Selected TSV files folder does not contain any .tsv files.", "Bulk Mapping");
+            return;
+        }
+        
+        try
+        {
+            await PerformBulkMapping(rootFolderPath, tsvFiles);
 
-        await TryPerformBulkMapping(rootFolderPath, tsvFilesFolderPath);
+        }
+        catch (Exception ex)
+        {
+            _userDialogService.ShowError($"An error occurred during bulk mapping:\n{ex.Message}", "Error");
+        }
     }
 
-    private async Task<bool> TryPerformBulkMapping(string rootFolderPath, string tsvFilesFolderPath)
+    private async Task PerformBulkMapping(string rootFolderPath, string[] tsvFiles)
     {
-        var tsvFiles = Directory.GetFiles(tsvFilesFolderPath, "*.tsv");
         var mappingResults = new List<(string FolderName, bool IsMapped)>();
         var totalFiles = tsvFiles.Length;
-        var processedFiles = 0;
-        var mappingProgressCts = new CancellationTokenSource();
-        var progressWindow = CreateMappingProgressDialog(tsvFiles.Length, mappingProgressCts);
         int successCount = 0;
+        int failedCount = 0;
         foreach (var tsvFile in tsvFiles)
         {
             var folderName = Path.GetFileNameWithoutExtension(tsvFile);
@@ -1112,30 +1123,31 @@ public partial class MainWindow : Window
             if (!Directory.Exists(targetFolderPath))
             {
                 mappingResults.Add((folderName, false));
+                failedCount++;
                 continue;
             }
             var (bookName, mappingInfo) = ParseMappingInfoFrom(tsvFile);
             if (mappingInfo.Count == 0)
             {
                 mappingResults.Add((folderName, false));
+                failedCount++;
                 continue;
             }
             var isMapped = await TryPerformMappingForFolderAsync(targetFolderPath, bookName, mappingInfo);
             if (isMapped)
             {
-                UpdateMappingProgress(progressWindow, ++processedFiles, totalFiles);
                 successCount++;
+            }
+            else
+            {
+                failedCount++;
             }
             mappingResults.Add((folderName, isMapped));
         }
-        progressWindow.Close();
         // Show summary of mapping results
-        
-        int failureCount = mappingResults.Count - successCount;
-        string summaryMessage = $"Bulk Mapping Completed.\n\nSuccessfully mapped: {successCount}\nFailed to map: {failureCount}\n\nDetails:\n" +
+        string summaryMessage = $"Bulk Mapping Completed.\n\nSuccessfully mapped: {successCount}\nFailed to map: {failedCount}\n\nDetails:\n" +
                                 string.Join("\n", mappingResults.Select(r => $"{r.FolderName}: {(r.IsMapped ? "Mapped" : "Failed")}"));
         _userDialogService.ShowInfo(summaryMessage, "Bulk Mapping Results");
-        return true;
     }
 
 
