@@ -1,5 +1,4 @@
 using ReviewTool.Helpers;
-using ReviewTool.Interfaces;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -233,20 +232,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         return true;
     }
 
-        public bool RemoveCustomReviewStatus(ReviewStatus reviewStatus)
+    public bool RemoveCustomReviewStatus(ReviewStatus reviewStatus)
+    {
+        if (_customReviewStatuses.Count <= 0)
         {
-            if (_customReviewStatuses.Count <= 0)
-            {
-                return false;
-            }
-            bool ok = _customReviewStatuses.Remove(reviewStatus);
-            if (ok)
-            {
-                RemoveStatusFlagFromCollections(reviewStatus.StatusFlag);
-                RebuildStatusButtons();
-            }
-            
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CustomReviewStatuses)));
+            return false;
+        }
+        bool ok = _customReviewStatuses.Remove(reviewStatus);
+        if (ok)
+        {
+            RemoveStatusFlagFromCollections(reviewStatus.StatusFlag);
+            RebuildStatusButtons();
+        }
+
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CustomReviewStatuses)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusButtons)));
         return ok;
     }
@@ -398,6 +397,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                || !string.IsNullOrWhiteSpace(reviewStatus.StatusFlag.Prefix);
     }
 
+
     public bool TryGetRequiredReviewStatus(ReviewStatusType statusType, out ReviewStatus reviewStatus)
     {
         foreach (var status in _requiredReviewStatuses)
@@ -412,7 +412,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         reviewStatus = default;
         return false;
     }
-
     public bool TryGetReviewStatusByFlagName(string flagName, out ReviewStatus reviewStatus)
     {
         if (string.IsNullOrWhiteSpace(flagName))
@@ -442,6 +441,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         reviewStatus = default;
         return false;
     }
+
 
 
     public BitmapSource? OriginalImagePreview

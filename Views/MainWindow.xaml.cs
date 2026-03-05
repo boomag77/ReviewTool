@@ -18,6 +18,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ReviewTool.Interfaces;
+using ReviewTool.Services;
 
 namespace ReviewTool;
 
@@ -50,7 +51,7 @@ public partial class MainWindow : Window
 
     public static readonly RoutedCommand PreviousImageCommand = new();
 
-    private readonly MainWindowViewModel _viewModel = new();
+    private readonly MainWindowViewModel _viewModel;
     private readonly InitialReviewProcessor _initialReviewProcessor;
     private readonly IFileProcessor _fileProcessor;
     private readonly ReviewProcessor _reviewProcessor;
@@ -94,19 +95,23 @@ public partial class MainWindow : Window
 
     private string? _currentReviewerName;
 
-    public MainWindow() : this(new FileProcessor())
+    public MainWindow() : this(new MainWindowViewModel(), new FileProcessor())
     {   
     }
 
-    internal MainWindow(IFileProcessor fileProcessor)
+    internal MainWindow(MainWindowViewModel viewModel, IFileProcessor fileProcessor)
     {
         ArgumentNullException.ThrowIfNull(fileProcessor);
+        ArgumentNullException.ThrowIfNull(viewModel);
+
         _fileProcessor = fileProcessor;
+        _viewModel = viewModel;
 
         InitializeComponent();
 
-        _initialReviewProcessor = new InitialReviewProcessor(_viewModel);
+        _initialReviewProcessor = new InitialReviewProcessor(viewModel);
         _reviewProcessor = new ReviewProcessor(fileProcessor);
+
         DataContext = _viewModel;
         TryLoadPersistedReviewStatuses();
         TryLoadPersistedReviewThumbnailSettings();
@@ -988,6 +993,9 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, $"An error occurred:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+        finally
+        {
+        }
     }
 
     private async void PerformMappingToMultipleFolders_Click(object sender, RoutedEventArgs e)
@@ -1039,6 +1047,7 @@ public partial class MainWindow : Window
         }
     }
 
+
     private async Task<bool> TryPerformMappingForFolderAsync(
         string originalFolderPath,
         string mappingBookName,
@@ -1062,7 +1071,64 @@ public partial class MainWindow : Window
         }
 
         _initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalFolderPath);
-        return await TryPerformMappingToAsync(originalFolderPath, mappingInfo);
+        var userDialogService = new UserDialogService(this);
+        var statusAffixResolver = new StatusAffixResolver(_viewModel.RequiredReviewStatuses,
+                                                            _viewModel.CustomReviewStatuses);
+        using var mappingProcessor = new MappingProcessor(_fileProcessor, userDialogService, statusAffixResolver);
+        var mappingCts = new CancellationTokenSource();
+        Window? progressWindow = CreateMappingProgressDialog(0, mappingCts);
+
+        string? completedSummary = null;
+        string? completedReport = null;
+
+        Action<string, string> OnMappingCompleted = (summary, report) =>
+        {
+            completedSummary = summary;
+            completedReport = report;
+        };
+        Action<int, int> onMappingProgressUpdated = (mapped, total) =>
+        {
+            if (progressWindow is null)
+            {
+                return;
+            }
+
+            if (progressWindow.Dispatcher.CheckAccess())
+            {
+                UpdateMappingProgress(progressWindow, mapped, total);
+                return;
+            }
+
+            progressWindow.Dispatcher.BeginInvoke(() =>
+                UpdateMappingProgress(progressWindow, mapped, total));
+        };
+        mappingProcessor.MappingProgressUpdated += onMappingProgressUpdated;
+        mappingProcessor.MappingCompleted += OnMappingCompleted;
+        bool mappingResult = false;
+        try
+        {
+            progressWindow?.Show();
+            mappingResult = await mappingProcessor.TryPerformMappingToAsync(originalFolderPath,
+                                                                            _initialReviewFolder,
+                                                                            mappingInfo,
+                                                                            mappingCts);
+        }
+        finally
+        {
+            mappingProcessor.MappingProgressUpdated -= onMappingProgressUpdated;
+            mappingProcessor.MappingCompleted -= OnMappingCompleted;
+            progressWindow?.Close();
+            progressWindow = null;
+            mappingCts.Dispose();
+        }
+        if (mappingResult && !string.IsNullOrWhiteSpace(completedSummary))
+        {
+            ShowMappingCompleteDialog(completedSummary, completedReport ?? string.Empty);
+            Activate();
+            Focus();
+            Keyboard.Focus(this);
+        }
+        return mappingResult;
     }
 
     private bool CanProceedWhenMappingBookNameDiffers(string originalFolderPath, string mappingBookName)
@@ -1964,202 +2030,202 @@ public partial class MainWindow : Window
         return (bookName, result);
     }
 
-    private async Task<bool> TryPerformMappingToAsync(string originalImagesFolderPath, IReadOnlyList<ImageFileMappingInfo> mappingInfo)
-    {
-        if (string.IsNullOrWhiteSpace(originalImagesFolderPath)
-            || string.IsNullOrWhiteSpace(_initialReviewFolder)
-            || mappingInfo is null
-            || mappingInfo.Count == 0)
-        {
-            return false;
-        }
+    //private async Task<bool> TryPerformMappingToAsync(string originalImagesFolderPath, IReadOnlyList<ImageFileMappingInfo> mappingInfo)
+    //{
+    //    if (string.IsNullOrWhiteSpace(originalImagesFolderPath)
+    //        || string.IsNullOrWhiteSpace(_initialReviewFolder)
+    //        || mappingInfo is null
+    //        || mappingInfo.Count == 0)
+    //    {
+    //        return false;
+    //    }
 
 
 
-        static FrozenDictionary<string, ImageFileMappingInfo> BuildFrozenNameToExt(IReadOnlyList<ImageFileMappingInfo> mappingItems)
-        {
-            return mappingItems
-                .ToFrozenDictionary(x => x.OriginalName, x => x, StringComparer.OrdinalIgnoreCase);
-        }
+    //    static FrozenDictionary<string, ImageFileMappingInfo> BuildFrozenNameToExt(IReadOnlyList<ImageFileMappingInfo> mappingItems)
+    //    {
+    //        return mappingItems
+    //            .ToFrozenDictionary(x => x.OriginalName, x => x, StringComparer.OrdinalIgnoreCase);
+    //    }
 
-        var folderFilesNoExtSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var originalFilesPaths = _fileProcessor.GetImageFilesInDirectory(originalImagesFolderPath);
-        foreach (var path in originalFilesPaths)
-        {
-            var nameNoExt = Path.GetFileNameWithoutExtension(path);
-            if (!string.IsNullOrWhiteSpace(nameNoExt))
-            {
-                folderFilesNoExtSet.Add(nameNoExt);
-            }
-        }
+    //    var folderFilesNoExtSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    //    var originalFilesPaths = _fileProcessor.GetImageFilesInDirectory(originalImagesFolderPath);
+    //    foreach (var path in originalFilesPaths)
+    //    {
+    //        var nameNoExt = Path.GetFileNameWithoutExtension(path);
+    //        if (!string.IsNullOrWhiteSpace(nameNoExt))
+    //        {
+    //            folderFilesNoExtSet.Add(nameNoExt);
+    //        }
+    //    }
 
-        var mappingFilesNoExtSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in mappingInfo)
-        {
-            var nameNoExt = item.OriginalName;
-            if (!string.IsNullOrWhiteSpace(nameNoExt))
-            {
-                mappingFilesNoExtSet.Add(nameNoExt);
-            }
-        }
+    //    var mappingFilesNoExtSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    //    foreach (var item in mappingInfo)
+    //    {
+    //        var nameNoExt = item.OriginalName;
+    //        if (!string.IsNullOrWhiteSpace(nameNoExt))
+    //        {
+    //            mappingFilesNoExtSet.Add(nameNoExt);
+    //        }
+    //    }
 
-        if (!folderFilesNoExtSet.SetEquals(mappingFilesNoExtSet))
-        {
-            var res = MessageBox.Show(this,
-                "Original file names do not match the mapping file.\n\nDo you want to proceed anyway?",
-                "Mapping mismatch",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (res != MessageBoxResult.Yes)
-                return false;
-        }
-        int totalFilesToMap = originalFilesPaths.Count;
+    //    if (!folderFilesNoExtSet.SetEquals(mappingFilesNoExtSet))
+    //    {
+    //        var res = MessageBox.Show(this,
+    //            "Original file names do not match the mapping file.\n\nDo you want to proceed anyway?",
+    //            "Mapping mismatch",
+    //            MessageBoxButton.YesNo,
+    //            MessageBoxImage.Warning);
+    //        if (res != MessageBoxResult.Yes)
+    //            return false;
+    //    }
+    //    int totalFilesToMap = originalFilesPaths.Count;
 
-        var mappingItemsDict = BuildFrozenNameToExt(mappingInfo);
+    //    var mappingItemsDict = BuildFrozenNameToExt(mappingInfo);
 
 
-        //var bookName = Path.GetFileName(_originalFolderPath) ?? "undefined";
-        var bookName = Path.GetFileName(Path.TrimEndingDirectorySeparator(originalImagesFolderPath));
-        _originalFolderPath = originalImagesFolderPath;
-        if (string.IsNullOrWhiteSpace(bookName))
-        {
-            bookName = "undefined";
-        }
+    //    //var bookName = Path.GetFileName(_originalFolderPath) ?? "undefined";
+    //    var bookName = Path.GetFileName(Path.TrimEndingDirectorySeparator(originalImagesFolderPath));
+    //    _originalFolderPath = originalImagesFolderPath;
+    //    if (string.IsNullOrWhiteSpace(bookName))
+    //    {
+    //        bookName = "undefined";
+    //    }
 
-        var issueReport = new StringBuilder();
-        var totalMappedFiles = 0;
-        var approvedCount = 0;
-        var rejectedCount = 0;
-        var missingCount = 0;
-        var mappingCts = new CancellationTokenSource();
-        var progressDialog = CreateMappingProgressDialog(totalFilesToMap, mappingCts);
-        progressDialog.Show();
-        var wasCanceled = false;
+    //    var issueReport = new StringBuilder();
+    //    var totalMappedFiles = 0;
+    //    var approvedCount = 0;
+    //    var rejectedCount = 0;
+    //    var missingCount = 0;
+    //    var mappingCts = new CancellationTokenSource();
+    //    var progressDialog = CreateMappingProgressDialog(totalFilesToMap, mappingCts);
+    //    progressDialog.Show();
+    //    var wasCanceled = false;
 
-        try
-        {
-            await Task.Run(() =>
-            {
-                Directory.CreateDirectory(_initialReviewFolder);
-                //var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
-                var pagesWithNumbers = new HashSet<int>();
-                var maxPageNumber = 0;
+    //    try
+    //    {
+    //        await Task.Run(() =>
+    //        {
+    //            Directory.CreateDirectory(_initialReviewFolder);
+    //            //var rejectedFolder = _fileProcessor.EnsureRejectedFolder(_initialReviewFolder);
+    //            var pagesWithNumbers = new HashSet<int>();
+    //            var maxPageNumber = 0;
 
-                foreach (var origFilePath in originalFilesPaths)
-                {
-                    if (mappingCts.IsCancellationRequested) { return; }
+    //            foreach (var origFilePath in originalFilesPaths)
+    //            {
+    //                if (mappingCts.IsCancellationRequested) { return; }
 
-                    string origFileNoExt = Path.GetFileNameWithoutExtension(origFilePath);
-                    if (!mappingItemsDict.TryGetValue(origFileNoExt, out ImageFileMappingInfo item))
-                    {
-                        ReadOnlySpan<char> notMappedSuffix = "_not_mapped_";
-                        string notMappedFileName = string.Concat(notMappedSuffix, Path.GetFileName(origFilePath.AsSpan()));
-                        _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, notMappedFileName);
-                        //_fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => notMappedFileName);
-                        continue;
-                    }
+    //                string origFileNoExt = Path.GetFileNameWithoutExtension(origFilePath);
+    //                if (!mappingItemsDict.TryGetValue(origFileNoExt, out ImageFileMappingInfo item))
+    //                {
+    //                    ReadOnlySpan<char> notMappedSuffix = "_not_mapped_";
+    //                    string notMappedFileName = string.Concat(notMappedSuffix, Path.GetFileName(origFilePath.AsSpan()));
+    //                    _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, notMappedFileName);
+    //                    //_fileProcessor.SaveFile(origFilePath, p => p, _initialReviewFolder, _ => notMappedFileName);
+    //                    continue;
+    //                }
 
-                    var statusType = _initialReviewProcessor.ParseStatusTypeFromMapping(item.ReviewStatus);
-                    var rejectFlagName = _initialReviewProcessor.NormalizeFlagName(item.RejectReason);
+    //                var statusType = _initialReviewProcessor.ParseStatusTypeFromMapping(item.ReviewStatus);
+    //                var rejectFlagName = _initialReviewProcessor.NormalizeFlagName(item.RejectReason);
 
-                    if (TryGetNumericPrefix(item.NewName.AsSpan(), out var pageNumber, out _)
-                        && pageNumber > 0)
-                    {
-                        pagesWithNumbers.Add(pageNumber);
-                        maxPageNumber = Math.Max(maxPageNumber, pageNumber);
-                    }
+    //                if (TryGetNumericPrefix(item.NewName.AsSpan(), out var pageNumber, out _)
+    //                    && pageNumber > 0)
+    //                {
+    //                    pagesWithNumbers.Add(pageNumber);
+    //                    maxPageNumber = Math.Max(maxPageNumber, pageNumber);
+    //                }
 
-                    ReadOnlySpan<char> sourceExt = Path.GetExtension(origFilePath.AsSpan());
-                    switch (statusType)
-                    {
-                        case ReviewStatusType.Pending:
-                            ReadOnlySpan<char> originalBase = item.NewName.AsSpan();
-                            var pendingPrefix = _initialReviewProcessor.GetPrefixForStatus(statusType, rejectFlagName);
-                            var pendingSuffix = _initialReviewProcessor.GetSuffixForStatus(statusType, rejectFlagName);
-                            string notReviewedFileName = string.Concat(pendingPrefix.AsSpan(), originalBase, pendingSuffix.AsSpan(), sourceExt);
-                            _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, notReviewedFileName);
-                            issueReport.Append(bookName);
-                            issueReport.Append('\t');
-                            issueReport.Append(item.NewName.AsSpan());
-                            issueReport.Append('\t');
-                            issueReport.AppendLine("Not Reviewed");
-                            break;
+    //                ReadOnlySpan<char> sourceExt = Path.GetExtension(origFilePath.AsSpan());
+    //                switch (statusType)
+    //                {
+    //                    case ReviewStatusType.Pending:
+    //                        ReadOnlySpan<char> originalBase = item.NewName.AsSpan();
+    //                        var pendingPrefix = _initialReviewProcessor.GetPrefixForStatus(statusType, rejectFlagName);
+    //                        var pendingSuffix = _initialReviewProcessor.GetSuffixForStatus(statusType, rejectFlagName);
+    //                        string notReviewedFileName = string.Concat(pendingPrefix.AsSpan(), originalBase, pendingSuffix.AsSpan(), sourceExt);
+    //                        _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, notReviewedFileName);
+    //                        issueReport.Append(bookName);
+    //                        issueReport.Append('\t');
+    //                        issueReport.Append(item.NewName.AsSpan());
+    //                        issueReport.Append('\t');
+    //                        issueReport.AppendLine("Not Reviewed");
+    //                        break;
 
-                        case ReviewStatusType.Accepted:
-                            var approvedPrefix = _initialReviewProcessor.GetPrefixForStatus(statusType, rejectFlagName);
-                            var approvedSuffix = _initialReviewProcessor.GetSuffixForStatus(statusType, rejectFlagName);
-                            string approvedFileName = string.Concat(approvedPrefix.AsSpan(), item.NewName.AsSpan(), approvedSuffix.AsSpan(), sourceExt);
-                            _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, approvedFileName);
-                            approvedCount++;
-                            break;
+    //                    case ReviewStatusType.Accepted:
+    //                        var approvedPrefix = _initialReviewProcessor.GetPrefixForStatus(statusType, rejectFlagName);
+    //                        var approvedSuffix = _initialReviewProcessor.GetSuffixForStatus(statusType, rejectFlagName);
+    //                        string approvedFileName = string.Concat(approvedPrefix.AsSpan(), item.NewName.AsSpan(), approvedSuffix.AsSpan(), sourceExt);
+    //                        _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, approvedFileName);
+    //                        approvedCount++;
+    //                        break;
 
-                        case ReviewStatusType.Rejected:
-                            rejectedCount++;
-                            var rejectedPrefix = _initialReviewProcessor.GetPrefixForStatus(statusType, rejectFlagName);
-                            var rejectedSuffix = _initialReviewProcessor.GetSuffixForStatus(statusType, rejectFlagName);
-                            string suffixed = string.Concat(rejectedPrefix.AsSpan(), item.NewName.AsSpan(), rejectedSuffix.AsSpan(), sourceExt);
-                            _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, suffixed);
-                            issueReport.Append(bookName);
-                            issueReport.Append('\t');
-                            issueReport.Append(item.NewName.AsSpan());
-                            issueReport.Append('\t');
-                            issueReport.AppendLine(string.IsNullOrWhiteSpace(rejectFlagName) ? "Rejected" : rejectFlagName);
-                            break;
-                    }
+    //                    case ReviewStatusType.Rejected:
+    //                        rejectedCount++;
+    //                        var rejectedPrefix = _initialReviewProcessor.GetPrefixForStatus(statusType, rejectFlagName);
+    //                        var rejectedSuffix = _initialReviewProcessor.GetSuffixForStatus(statusType, rejectFlagName);
+    //                        string suffixed = string.Concat(rejectedPrefix.AsSpan(), item.NewName.AsSpan(), rejectedSuffix.AsSpan(), sourceExt);
+    //                        _fileProcessor.SaveFile(origFilePath, _initialReviewFolder, suffixed);
+    //                        issueReport.Append(bookName);
+    //                        issueReport.Append('\t');
+    //                        issueReport.Append(item.NewName.AsSpan());
+    //                        issueReport.Append('\t');
+    //                        issueReport.AppendLine(string.IsNullOrWhiteSpace(rejectFlagName) ? "Rejected" : rejectFlagName);
+    //                        break;
+    //                }
 
-                    totalMappedFiles++;
-                    Dispatcher.Invoke(() => UpdateMappingProgress(progressDialog, totalMappedFiles, totalFilesToMap));
-                }
+    //                totalMappedFiles++;
+    //                Dispatcher.Invoke(() => UpdateMappingProgress(progressDialog, totalMappedFiles, totalFilesToMap));
+    //            }
 
-                if (mappingCts.IsCancellationRequested)
-                {
-                    return;
-                }
-                var missingBlock = new StringBuilder();
-                for (var i = 1; i <= maxPageNumber; i++)
-                {
-                    if (!pagesWithNumbers.Contains(i))
-                    {
-                        missingBlock.Append(bookName);
-                        missingBlock.Append('\t');
-                        missingBlock.Append(i);
-                        missingBlock.Append('\t');
-                        missingBlock.AppendLine("Missing");
-                        missingCount++;
-                    }
-                }
-                if (missingCount > 0)
-                {
-                    issueReport.Insert(0, missingBlock.ToString());
-                }
-            }, mappingCts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            wasCanceled = true;
-        }
-        finally
-        {
-            progressDialog.Dispatcher.Invoke(progressDialog.Close);
-        }
+    //            if (mappingCts.IsCancellationRequested)
+    //            {
+    //                return;
+    //            }
+    //            var missingBlock = new StringBuilder();
+    //            for (var i = 1; i <= maxPageNumber; i++)
+    //            {
+    //                if (!pagesWithNumbers.Contains(i))
+    //                {
+    //                    missingBlock.Append(bookName);
+    //                    missingBlock.Append('\t');
+    //                    missingBlock.Append(i);
+    //                    missingBlock.Append('\t');
+    //                    missingBlock.AppendLine("Missing");
+    //                    missingCount++;
+    //                }
+    //            }
+    //            if (missingCount > 0)
+    //            {
+    //                issueReport.Insert(0, missingBlock.ToString());
+    //            }
+    //        }, mappingCts.Token);
+    //    }
+    //    catch (OperationCanceledException)
+    //    {
+    //        wasCanceled = true;
+    //    }
+    //    finally
+    //    {
+    //        progressDialog.Dispatcher.Invoke(progressDialog.Close);
+    //    }
 
-        if (mappingCts.IsCancellationRequested || wasCanceled)
-        {
-            return false;
-        }
+    //    if (mappingCts.IsCancellationRequested || wasCanceled)
+    //    {
+    //        return false;
+    //    }
 
-        var reportText = issueReport.ToString();
-        var mappingTargetDisplayPath = BuildDisplayPath(originalImagesFolderPath);
-        var summaryText =
-            $"{mappingTargetDisplayPath}:\n\n" +
-            $"Mapping performed successfully.\n\n" +
-            $"Total files: {totalMappedFiles}\n" +
-            $"Approved: {approvedCount}\n" +
-            $"Rejected: {rejectedCount}\n" +
-            $"Missing: {missingCount}";
-        ShowMappingCompleteDialog(summaryText, reportText);
-        return true;
-    }
+    //    var reportText = issueReport.ToString();
+    //    var mappingTargetDisplayPath = BuildDisplayPath(originalImagesFolderPath);
+    //    var summaryText =
+    //        $"{mappingTargetDisplayPath}:\n\n" +
+    //        $"Mapping performed successfully.\n\n" +
+    //        $"Total files: {totalMappedFiles}\n" +
+    //        $"Approved: {approvedCount}\n" +
+    //        $"Rejected: {rejectedCount}\n" +
+    //        $"Missing: {missingCount}";
+    //    ShowMappingCompleteDialog(summaryText, reportText);
+    //    return true;
+    //}
 
     private static bool IsSeparator(char c) => c == '\\';
     public static bool TryGetProjectName(ReadOnlySpan<char> path, out ReadOnlySpan<char> projectName)
@@ -2229,7 +2295,7 @@ public partial class MainWindow : Window
         return -1;
     }
 
-    private void ShowMappingCompleteDialog(string summaryText, string reportText)
+    public void ShowMappingCompleteDialog(string summaryText, string reportText)
     {
         var dialog = new Window
         {
@@ -2295,7 +2361,7 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
-    private Window CreateMappingProgressDialog(int totalFiles, CancellationTokenSource mappingCts)
+    public Window CreateMappingProgressDialog(int totalFiles, CancellationTokenSource mappingCts)
     {
         var dialog = new Window
         {
@@ -2352,7 +2418,7 @@ public partial class MainWindow : Window
         return dialog;
     }
 
-    private void UpdateMappingProgress(Window dialog, int mappedFiles, int totalFiles)
+    public void UpdateMappingProgress(Window dialog, int mappedFiles, int totalFiles)
     {
         if (dialog.Tag is not MappingProgressState state)
         {
