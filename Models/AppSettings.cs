@@ -21,6 +21,83 @@ internal static class AppSettings
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    public static bool TryLoadLastFolderPaths(out string lastFolderToLoad,
+                                              out string lastFolderToSave,
+                                              out string error)
+    {
+        lastFolderToLoad = string.Empty;
+        lastFolderToSave = string.Empty;
+        error = string.Empty;
+
+        var settingsPath = BuildSettingsFilePath();
+        if (!File.Exists(settingsPath))
+        {
+            return true;
+        }
+
+        try
+        {
+            var payload = TryReadPayload(settingsPath, out _, out _);
+            if (payload is null)
+            {
+                return true;
+            }
+
+            lastFolderToLoad = payload.LastFolderToLoad ?? string.Empty;
+            lastFolderToSave = payload.LastFolderToSave ?? string.Empty;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to load last folder paths: {ex.Message}";
+            return false;
+        }
+    }
+
+    public static bool TrySaveLastFolderPaths(string? lastFolderToLoad,
+                                              string? lastFolderToSave,
+                                              out string error)
+    {
+        error = string.Empty;
+
+        try
+        {
+            var settingsPath = BuildSettingsFilePath();
+            var settingsFolder = Path.GetDirectoryName(settingsPath);
+            if (string.IsNullOrWhiteSpace(settingsFolder))
+            {
+                error = "Invalid settings folder path.";
+                return false;
+            }
+
+            Directory.CreateDirectory(settingsFolder);
+
+            var payload = TryReadPayload(settingsPath, out _, out _) ?? new ReviewStatusSettingsPayload();
+            payload.Version = 2;
+
+            if (!string.IsNullOrWhiteSpace(lastFolderToLoad))
+            {
+                payload.LastFolderToLoad = lastFolderToLoad;
+            }
+
+            if (!string.IsNullOrWhiteSpace(lastFolderToSave))
+            {
+                payload.LastFolderToSave = lastFolderToSave;
+            }
+
+            var json = JsonSerializer.Serialize(payload, JsonOptions);
+            var tempPath = settingsPath + ".tmp";
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, settingsPath, overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to save last folder paths: {ex.Message}";
+            return false;
+        }
+    }
+
     public static bool TryLoadReviewStatuses(out IReadOnlyList<ReviewStatus> requiredStatuses,
                                              out IReadOnlyList<ReviewStatus> customStatuses,
                                              out string error)
@@ -197,5 +274,7 @@ internal static class AppSettings
         public List<ReviewStatus>? CustomStatuses { get; set; }
         public int? ReviewThumbnailSizePx { get; set; }
         public int? ReviewThumbnailMaxSizePx { get; set; }
+        public string? LastFolderToSave { get; set; }
+        public string? LastFolderToLoad { get; set; }
     }
 }

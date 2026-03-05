@@ -1601,13 +1601,76 @@ public partial class MainWindow : Window
 
     private static string? SelectFolder(string title)
     {
+        var initialDirectory = ResolveInitialLoadDirectory();
         var dialog = new OpenFolderDialog
         {
             Title = title,
+            InitialDirectory = initialDirectory,
             Multiselect = false,
         };
 
-        return dialog.ShowDialog() == true ? dialog.FolderName : null;
+        if (dialog.ShowDialog() != true)
+        {
+            return null;
+        }
+
+        PersistLastLoadDirectory(dialog.FolderName);
+        return dialog.FolderName;
+    }
+
+    private static string ResolveInitialLoadDirectory()
+    {
+        if (AppSettings.TryLoadLastFolderPaths(out var lastFolderToLoad, out _, out _)
+            && !string.IsNullOrWhiteSpace(lastFolderToLoad)
+            && Directory.Exists(lastFolderToLoad))
+        {
+            return lastFolderToLoad;
+        }
+
+        return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+    }
+
+    private static string ResolveInitialSaveDirectory(string fallbackDirectory)
+    {
+        if (AppSettings.TryLoadLastFolderPaths(out _, out var lastFolderToSave, out _)
+            && !string.IsNullOrWhiteSpace(lastFolderToSave)
+            && Directory.Exists(lastFolderToSave))
+        {
+            return lastFolderToSave;
+        }
+
+        if (!string.IsNullOrWhiteSpace(fallbackDirectory) && Directory.Exists(fallbackDirectory))
+        {
+            return fallbackDirectory;
+        }
+
+        return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+    }
+
+    private static void PersistLastLoadDirectory(string selectedFolderPath)
+    {
+        if (string.IsNullOrWhiteSpace(selectedFolderPath))
+        {
+            return;
+        }
+
+        _ = AppSettings.TrySaveLastFolderPaths(selectedFolderPath, null, out _);
+    }
+
+    private static void PersistLastSaveDirectory(string selectedFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(selectedFilePath))
+        {
+            return;
+        }
+
+        var selectedDirectory = Path.GetDirectoryName(selectedFilePath);
+        if (string.IsNullOrWhiteSpace(selectedDirectory))
+        {
+            return;
+        }
+
+        _ = AppSettings.TrySaveLastFolderPaths(null, selectedDirectory, out _);
     }
 
     private List<string> ShowSelectMultipleFoldersWindow()
@@ -2058,7 +2121,7 @@ public partial class MainWindow : Window
                 Title = "Save mapping file",
                 Filter = "IR mapping TSV files (*.tsv)|*.tsv|All files (*.*)|*.*",
                 FileName = $"{baseName}.tsv",
-                InitialDirectory = _originalFolderPath
+                InitialDirectory = ResolveInitialSaveDirectory(_originalFolderPath)
             };
 
             if (saveDialog.ShowDialog() != true)
@@ -2066,6 +2129,7 @@ public partial class MainWindow : Window
                 return false;
             }
             mappingFilePath = saveDialog.FileName;
+            PersistLastSaveDirectory(mappingFilePath);
         }
 
         try
