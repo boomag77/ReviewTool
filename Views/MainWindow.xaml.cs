@@ -1083,8 +1083,59 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BulkMapping_Click(object sender, RoutedEventArgs e)
+    private async void BulkMapping_Click(object sender, RoutedEventArgs e)
     {
+        string rootFolderPath = _userDialogService.SelectFolder("Select root folder with folders to map", null);
+        string tsvFilesFolderPath = _userDialogService.SelectFolder("Select folder with TSV files", null); 
+        if (string.IsNullOrWhiteSpace(rootFolderPath) || string.IsNullOrWhiteSpace(tsvFilesFolderPath))
+        {
+            _userDialogService.ShowWarning("Both root folder and TSV files folder must be selected.", "Bulk Mapping");
+            return;
+        }
+
+        await TryPerformBulkMapping(rootFolderPath, tsvFilesFolderPath);
+    }
+
+    private async Task<bool> TryPerformBulkMapping(string rootFolderPath, string tsvFilesFolderPath)
+    {
+        var tsvFiles = Directory.GetFiles(tsvFilesFolderPath, "*.tsv");
+        var mappingResults = new List<(string FolderName, bool IsMapped)>();
+        var totalFiles = tsvFiles.Length;
+        var processedFiles = 0;
+        var mappingProgressCts = new CancellationTokenSource();
+        var progressWindow = CreateMappingProgressDialog(tsvFiles.Length, mappingProgressCts);
+        int successCount = 0;
+        foreach (var tsvFile in tsvFiles)
+        {
+            var folderName = Path.GetFileNameWithoutExtension(tsvFile);
+            var targetFolderPath = Path.Combine(rootFolderPath, folderName);
+            if (!Directory.Exists(targetFolderPath))
+            {
+                mappingResults.Add((folderName, false));
+                continue;
+            }
+            var (bookName, mappingInfo) = ParseMappingInfoFrom(tsvFile);
+            if (mappingInfo.Count == 0)
+            {
+                mappingResults.Add((folderName, false));
+                continue;
+            }
+            var isMapped = await TryPerformMappingForFolderAsync(targetFolderPath, bookName, mappingInfo);
+            if (isMapped)
+            {
+                UpdateMappingProgress(progressWindow, ++processedFiles, totalFiles);
+                successCount++;
+            }
+            mappingResults.Add((folderName, isMapped));
+        }
+        progressWindow.Close();
+        // Show summary of mapping results
+        
+        int failureCount = mappingResults.Count - successCount;
+        string summaryMessage = $"Bulk Mapping Completed.\n\nSuccessfully mapped: {successCount}\nFailed to map: {failureCount}\n\nDetails:\n" +
+                                string.Join("\n", mappingResults.Select(r => $"{r.FolderName}: {(r.IsMapped ? "Mapped" : "Failed")}"));
+        _userDialogService.ShowInfo(summaryMessage, "Bulk Mapping Results");
+        return true;
     }
 
 

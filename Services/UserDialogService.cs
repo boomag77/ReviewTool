@@ -1,4 +1,5 @@
-﻿using ReviewTool.Interfaces;
+﻿using Microsoft.Win32;
+using ReviewTool.Interfaces;
 using System.Windows;
 
 namespace ReviewTool.Services
@@ -19,5 +20,39 @@ namespace ReviewTool.Services
             MessageBox.Show(_owner, text, title, MessageBoxButton.OK, MessageBoxImage.Warning);
         public void ShowError(string text, string title) =>
             MessageBox.Show(_owner, text, title, MessageBoxButton.OK, MessageBoxImage.Error);
+
+        public string SelectFolder(string title, string? initialDirectory)
+        {
+            var dialog = new OpenFolderDialog
+            {
+                Title = title,
+                // If initialDirectory is null, last used directory will be opened, or MyDocuments if no last used directory
+                InitialDirectory = initialDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                Multiselect = false
+            };
+            var result = dialog.ShowDialog();
+            if (result == true)
+            {
+                return dialog.FolderName;
+            }
+            return string.Empty;
+        }
+
+        public string[] SelectFolders(string title, string? initialDirectory)
+        {
+            var dialog = new OpenFolderDialog
+            {
+                Title = title,
+                // If initialDirectory is null, last used directory will be opened, or MyDocuments if no last used directory
+                InitialDirectory = initialDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                Multiselect = true
+            };
+            var result = dialog.ShowDialog();
+            if (result == true)
+            {
+                return dialog.FolderNames;
+            }
+            return Array.Empty<string>();
+        }
     }
 }
