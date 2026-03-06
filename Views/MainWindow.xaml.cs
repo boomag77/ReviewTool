@@ -1064,7 +1064,7 @@ public partial class MainWindow : Window
             var mappedFoldersCount = 0;
             foreach (var folderPath in selectedFolders)
             {
-                var wasMapped = await TryPerformMappingForFolderAsync(folderPath, bookName, mappingInfo);
+                var (wasMapped, _) = await TryPerformMappingForFolderAsync(folderPath, bookName, mappingInfo);
                 if (wasMapped)
                 {
                     mappedFoldersCount++;
@@ -1112,72 +1112,110 @@ public partial class MainWindow : Window
 
     private async Task PerformBulkMapping(string rootFolderPath, string[] tsvFiles)
     {
+        if (tsvFiles.Length == 0)
+        {
+            _userDialogService.ShowWarning("No TSV files found for mapping.", "Bulk Mapping");
+            return;
+        }
         var mappingResults = new List<(string FolderName, bool IsMapped)>();
         var totalFiles = tsvFiles.Length;
         int successCount = 0;
         int failedCount = 0;
-        foreach (var tsvFile in tsvFiles)
+        var combinedIssues = new StringBuilder();
+        var bulkMappingCts = new CancellationTokenSource();
+        Window? progressWindow = CreateMappingProgressDialog(totalFiles, bulkMappingCts);
+        progressWindow?.Show();
+        try
         {
-            var folderName = Path.GetFileNameWithoutExtension(tsvFile);
-            var targetFolderPath = Path.Combine(rootFolderPath, folderName);
-            if (!Directory.Exists(targetFolderPath))
+            foreach (var tsvFile in tsvFiles)
             {
-                mappingResults.Add((folderName, false));
-                failedCount++;
-                continue;
+                bulkMappingCts.Token.ThrowIfCancellationRequested();
+                var folderName = Path.GetFileNameWithoutExtension(tsvFile);
+                var targetFolderPath = Path.Combine(rootFolderPath, folderName);
+                if (!Directory.Exists(targetFolderPath))
+                {
+                    mappingResults.Add((folderName, false));
+                    failedCount++;
+                    UpdateBulkMappingProgress(progressWindow, successCount, failedCount, totalFiles);
+                    continue;
+                }
+                var (bookName, mappingInfo) = ParseMappingInfoFrom(tsvFile);
+                if (mappingInfo.Count == 0)
+                {
+                    mappingResults.Add((folderName, false));
+                    failedCount++;
+                    UpdateBulkMappingProgress(progressWindow, successCount, failedCount, totalFiles);
+                    continue;
+                }
+
+                var (isMapped, reportText) = await TryPerformMappingForFolderAsync(targetFolderPath, bookName, mappingInfo, isBulk: true);
+                if (isMapped)
+                {
+                    successCount++;
+                }
+                else
+                {
+                    failedCount++;
+                }
+                if (!string.IsNullOrWhiteSpace(reportText))
+                {
+                    //combinedIssues.AppendLine($"[{folderName}]");
+                    combinedIssues.AppendLine(reportText);
+                    //combinedIssues.AppendLine();
+                }
+                mappingResults.Add((folderName, isMapped));
+                UpdateBulkMappingProgress(progressWindow, successCount, failedCount, totalFiles);
             }
-            var (bookName, mappingInfo) = ParseMappingInfoFrom(tsvFile);
-            if (mappingInfo.Count == 0)
-            {
-                mappingResults.Add((folderName, false));
-                failedCount++;
-                continue;
-            }
-            var isMapped = await TryPerformMappingForFolderAsync(targetFolderPath, bookName, mappingInfo);
-            if (isMapped)
-            {
-                successCount++;
-            }
-            else
-            {
-                failedCount++;
-            }
-            mappingResults.Add((folderName, isMapped));
+            progressWindow?.Close();
+            //ShowMappingCompleteDialog("Bulk Mapping Completed", combinedIssues.ToString());
+            // Show summary of mapping results
+            //string summaryMessage = $"Bulk Mapping Completed.\n\nSuccessfully mapped: {successCount}\nFailed to map: {failedCount}\n\nDetails:\n" +
+            //string.Join("\n", mappingResults.Select(r => $"{r.FolderName}: {(r.IsMapped ? "Mapped" : "Failed")}"));
+            ShowBulkMappingCompleteDialog(successCount, failedCount, mappingResults, combinedIssues.ToString());
+            //_userDialogService.ShowInfo(summaryMessage, "Bulk Mapping Results");
         }
-        // Show summary of mapping results
-        string summaryMessage = $"Bulk Mapping Completed.\n\nSuccessfully mapped: {successCount}\nFailed to map: {failedCount}\n\nDetails:\n" +
-                                string.Join("\n", mappingResults.Select(r => $"{r.FolderName}: {(r.IsMapped ? "Mapped" : "Failed")}"));
-        _userDialogService.ShowInfo(summaryMessage, "Bulk Mapping Results");
+        catch (OperationCanceledException)
+        {
+            _userDialogService.ShowInfo("Bulk mapping was canceled.", "Bulk Mapping");
+        }
+        finally
+        {
+            bulkMappingCts.Dispose();
+            progressWindow?.Close();
+        }
+
     }
 
 
-    private async Task<bool> TryPerformMappingForFolderAsync(
+    private async Task<(bool isMapped, string ReportText)> TryPerformMappingForFolderAsync(
         string originalFolderPath,
         string mappingBookName,
-        IReadOnlyList<ImageFileMappingInfo> mappingInfo)
+        IReadOnlyList<ImageFileMappingInfo> mappingInfo,
+        bool isBulk = false)
     {
         if (string.IsNullOrWhiteSpace(originalFolderPath)
             || mappingInfo is null
             || mappingInfo.Count == 0)
         {
-            return false;
+            return (false, string.Empty);
         }
 
         if (!CanProceedWhenMappingBookNameDiffers(originalFolderPath, mappingBookName))
         {
-            return false;
+            return (false, string.Empty);
         }
 
         if (!CanProceedWhenInitialReviewFolderExists(originalFolderPath))
         {
-            return false;
+            return (false, string.Empty);
         }
 
         var statusAffixResolver = new StatusAffixResolver(_viewModel.RequiredReviewStatuses,
                                                             _viewModel.CustomReviewStatuses);
         using var mappingProcessor = new MappingProcessor(_fileProcessor, _userDialogService, statusAffixResolver);
         var mappingCts = new CancellationTokenSource();
-        Window? progressWindow = CreateMappingProgressDialog(0, mappingCts);
+
+        Window? progressWindow = isBulk ? null : CreateMappingProgressDialog(0, mappingCts);
 
         string? completedSummary = null;
         string? completedReport = null;
@@ -1187,7 +1225,7 @@ public partial class MainWindow : Window
             completedSummary = summary;
             completedReport = report;
         };
-        Action<int, int> onMappingProgressUpdated = (mapped, total) =>
+        Action<int, int> onMappingProgressUpdated = isBulk ? (mapped, total) => { } : (mapped, total) =>
         {
             if (progressWindow is null)
             {
@@ -1203,7 +1241,8 @@ public partial class MainWindow : Window
             progressWindow.Dispatcher.BeginInvoke(() =>
                 UpdateMappingProgress(progressWindow, mapped, total));
         };
-        mappingProcessor.MappingProgressUpdated += onMappingProgressUpdated;
+        if (!isBulk)
+            mappingProcessor.MappingProgressUpdated += onMappingProgressUpdated;
         mappingProcessor.MappingCompleted += OnMappingCompleted;
 
         bool mappingResult = false;
@@ -1216,20 +1255,21 @@ public partial class MainWindow : Window
         }
         finally
         {
-            mappingProcessor.MappingProgressUpdated -= onMappingProgressUpdated;
+            if (!isBulk)
+                mappingProcessor.MappingProgressUpdated -= onMappingProgressUpdated;
             mappingProcessor.MappingCompleted -= OnMappingCompleted;
             progressWindow?.Close();
             progressWindow = null;
             mappingCts.Dispose();
         }
-        if (mappingResult && !string.IsNullOrWhiteSpace(completedSummary))
+        if (!isBulk && mappingResult && !string.IsNullOrWhiteSpace(completedSummary))
         {
             ShowMappingCompleteDialog(completedSummary, completedReport ?? string.Empty);
             Activate();
             Focus();
             Keyboard.Focus(this);
         }
-        return mappingResult;
+        return (mappingResult, completedReport ?? string.Empty);
     }
 
     private bool CanProceedWhenMappingBookNameDiffers(string originalFolderPath, string mappingBookName)
@@ -2530,6 +2570,35 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
+    public void ShowBulkMappingCompleteDialog(
+        int successCount,
+        int failedCount,
+        IReadOnlyList<(string FolderName, bool IsMapped)> mappingResults,
+        string combinedIssuesReport)
+    {
+        var summaryBuilder = new StringBuilder();
+        summaryBuilder.AppendLine("Bulk Mapping Completed.");
+        summaryBuilder.AppendLine();
+        summaryBuilder.Append("Successfully mapped: ").AppendLine(successCount.ToString());
+        summaryBuilder.Append("Failed to map: ").AppendLine(failedCount.ToString());
+
+        if (mappingResults.Count > 0)
+        {
+            summaryBuilder.AppendLine();
+            summaryBuilder.AppendLine("Details:");
+
+            foreach (var mappingResult in mappingResults)
+            {
+                summaryBuilder
+                    .Append(mappingResult.FolderName)
+                    .Append(": ")
+                    .AppendLine(mappingResult.IsMapped ? "Mapped" : "Failed");
+            }
+        }
+
+        ShowMappingCompleteDialog(summaryBuilder.ToString(), combinedIssuesReport);
+    }
+
     public Window CreateMappingProgressDialog(int totalFiles, CancellationTokenSource mappingCts)
     {
         var dialog = new Window
@@ -2604,6 +2673,24 @@ public partial class MainWindow : Window
         {
             state.StatusText.Text = $"Mapping files: {mappedFiles}/{totalFiles}";
         }
+    }
+
+    private void UpdateBulkMappingProgress(Window? progressWindow, int successCount, int failedCount, int totalFiles)
+    {
+        if (progressWindow is null)
+        {
+            return;
+        }
+
+        int totalMapped = successCount + failedCount;
+        if (progressWindow.Dispatcher.CheckAccess())
+        {
+            UpdateMappingProgress(progressWindow, totalMapped, totalFiles);
+            return;
+        }
+
+        progressWindow.Dispatcher.BeginInvoke(() =>
+            UpdateMappingProgress(progressWindow, totalMapped, totalFiles));
     }
 
     private sealed class MappingProgressState
