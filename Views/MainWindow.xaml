@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:ReviewTool"
         xmlns:models="clr-namespace:ReviewTool.Models"
         mc:Ignorable="d"
-        Title="ReviewTool v2.1  " Height="720" Width="1200" MinHeight="640" MinWidth="980"
+        Title="ReviewTool v2.11  " Height="720" Width="1200" MinHeight="640" MinWidth="980"
         Background="LightGray"
         Icon="/Assets/appIcon.ico"
         Focusable="True"
