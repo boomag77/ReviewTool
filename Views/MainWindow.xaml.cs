@@ -3261,7 +3261,8 @@ public partial class MainWindow : Window
 
     private void LoadOriginalFilesList(string folderPath)
     {
-        var files = _fileProcessor.GetImageFilesInDirectory(folderPath);
+        var files = _fileProcessor.GetImageFilesInDirectory(folderPath)
+            .OrderBy(path => Path.GetFileName(path), ExplorerComparer.Instance);
         var items = files.Select(path => new ImageFileItem(path));
         _viewModel.OriginalFiles = new ObservableCollection<ImageFileItem>(items);
         _viewModel.SelectedOriginalFile = null;
