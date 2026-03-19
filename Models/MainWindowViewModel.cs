@@ -23,6 +23,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _reviewButtonText = "Start Review";
     private string _performMappingButtonText = "Perform mapping";
     private bool _isAutoFillEnabled;
+    private bool _isFlagsOnlyMode;
     private string _targetFolderDisplayPath = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -484,6 +485,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _isAutoFillEnabled;
         set => SetField(ref _isAutoFillEnabled, value);
+    }
+
+    public bool IsFlagsOnlyMode
+    {
+        get => _isFlagsOnlyMode;
+        set => SetField(ref _isFlagsOnlyMode, value);
     }
 
     public ObservableCollection<ImageFileItem> OriginalFiles

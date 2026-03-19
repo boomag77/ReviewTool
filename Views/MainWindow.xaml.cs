@@ -260,6 +260,7 @@ public partial class MainWindow : Window
         //_fileNameBuilder.Reset(_fileProcessor.ListImageFiles(_initialReviewFolder));
         _suggestedNames.Clear();
         _viewModel.IsAutoFillEnabled = false;
+        _viewModel.IsFlagsOnlyMode = false;
 
         await BuildFoldersIndexesAsync(originalFolder, isOriginal: true);
         //ReadOnlySpan<char> span = _originalFolderIndex.LastIndex.ToString().AsSpan();
@@ -1468,6 +1469,11 @@ public partial class MainWindow : Window
         }
     }
 
+    private void FlagsOnlyCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        _viewModel.IsAutoFillEnabled = false;
+    }
+
     private void AutoFillCheckBox_Checked(object sender, RoutedEventArgs e)
     {
         if (!_isInitialReview || !_viewModel.IsAutoFillEnabled)
@@ -1494,6 +1500,7 @@ public partial class MainWindow : Window
         }
 
         _viewModel.IsAutoFillEnabled = false;
+        _viewModel.IsFlagsOnlyMode = false;
         _lastSuggestedNumber = null;
         _lastHandledIndex = -1;
         _suggestedNames.Clear();
@@ -2020,7 +2027,9 @@ public partial class MainWindow : Window
             for (int i = 0; i < itemsCount; i++)
             {
                 var item = items[i];
-                var newFileName = fileNameBuilder.BuildReviewedFileName(item.FilePath, item.NewFileName, out bool hasPageNumber);
+                var newFileName = _viewModel.IsFlagsOnlyMode
+                                  ? Path.GetFileName(item.FilePath)
+                                  : fileNameBuilder.BuildReviewedFileName(item.FilePath, item.NewFileName, out bool hasPageNumber);
                 if (TryGetNumericPrefix(newFileName.AsSpan(), out var pageNumber, out _)
                     && pageNumber > 0)
                 {
@@ -3315,6 +3324,8 @@ public partial class MainWindow : Window
                 {
                     return;
                 }
+
+                OriginalFilesList.ScrollIntoView(item);
 
                 var textBox = FindVisualChild<TextBox>(container);
                 if (textBox is null)

@@ -34,7 +34,7 @@ public sealed class FileProcessor : IFileProcessor
         return string.IsNullOrWhiteSpace(parent) ? initialName : Path.Combine(parent, initialName);
     }
 
-    //public string EnsureRejectedFolder(string initialFolder)
+//public string EnsureRejectedFolder(string initialFolder)
     //{
     //    var rejectedFolder = Path.Combine(initialFolder, "Rejected");
     //    Directory.CreateDirectory(rejectedFolder);
