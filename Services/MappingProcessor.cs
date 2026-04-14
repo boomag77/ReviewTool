@@ -35,9 +35,27 @@ internal class MappingProcessor : IMappingProcessor, IDisposable
 
     private static bool IsSeparator(char c) => c == '\\';
 
+    private sealed class OcsState
+    {
+        public string? CurrentSectionFolderPath { get; set; }
+        public int CurrentNumber { get; set; }
+    }
+
+    private static bool IsFirstPageFlag(string flagName)
+    {
+        return string.Equals(flagName?.Trim(), "First page", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildOcsNumberedName(int number, ReadOnlySpan<char> extension)
+    {
+        return string.Concat(number.ToString("D5"), extension);
+    }
+
+
     public async Task<bool> TryPerformMappingToAsync(string originalImagesFolderPath,
                                                      IReadOnlyList<ImageFileMappingInfo> mappingInfo,
-                                                     CancellationTokenSource mappingCts)
+                                                     CancellationTokenSource mappingCts,
+                                                     bool isOcsEnabled)
     {
         string initialReviewFolder = _fileProcessor.EnsureInitialReviewFolder(originalImagesFolderPath);
 
@@ -124,6 +142,8 @@ internal class MappingProcessor : IMappingProcessor, IDisposable
                 var pagesWithNumbers = new HashSet<int>();
                 var maxPageNumber = 0;
 
+                var ocsState = new OcsState();
+
                 foreach (var origFilePath in originalFilesPaths)
                 {
                     if (mappingCts.IsCancellationRequested) { return; }
@@ -149,6 +169,33 @@ internal class MappingProcessor : IMappingProcessor, IDisposable
                     }
 
                     ReadOnlySpan<char> sourceExt = Path.GetExtension(origFilePath.AsSpan());
+
+                    if (isOcsEnabled)
+                    {
+                        var isFirstPage = IsFirstPageFlag(rejectFlagName);
+
+                        if (isFirstPage)
+                        {
+                            var sectionFolderName = item.OriginalName;
+                            var sectionFolderPath = Path.Combine(initialReviewFolder, sectionFolderName);
+                            Directory.CreateDirectory(sectionFolderPath);
+
+                            ocsState.CurrentSectionFolderPath = sectionFolderPath;
+                            ocsState.CurrentNumber = 1;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(ocsState.CurrentSectionFolderPath))
+                        {
+                            var ocsFileName = BuildOcsNumberedName(ocsState.CurrentNumber, sourceExt);
+                            _fileProcessor.SaveFile(origFilePath, ocsState.CurrentSectionFolderPath, ocsFileName);
+                            ocsState.CurrentNumber++;
+
+                            totalMappedFiles++;
+                            MappingProgressUpdated?.Invoke(totalMappedFiles, totalFilesToMap);
+                            continue;
+                        }
+                    }
+
                     switch (statusType)
                     {
                         case ReviewStatusType.Pending:

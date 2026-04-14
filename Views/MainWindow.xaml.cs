@@ -279,10 +279,11 @@ public partial class MainWindow : Window
     }
 
 
+
     private async Task FinishInitialReviewAsync()
     {
-        var actionResult = ShowInitialReviewFinishDialog();
-        if (actionResult == InitialReviewFinishAction.Cancel)
+        var finishDialogResult = ShowInitialReviewFinishDialog();
+        if (finishDialogResult.Action == InitialReviewFinishAction.Cancel)
         {
             return;
         }
@@ -295,8 +296,10 @@ public partial class MainWindow : Window
         }
 
 
-        if (actionResult == InitialReviewFinishAction.Apply)
+        if (finishDialogResult.Action == InitialReviewFinishAction.Apply)
         {
+           
+
             var initialFolderPath = _fileProcessor.GetInitialReviewFolderPath(_originalFolderPath);
             if (Directory.Exists(initialFolderPath))
             {
@@ -349,7 +352,7 @@ public partial class MainWindow : Window
             mappingProcessor.MappingProgressUpdated += onMappingProgressUpdated;
             mappingProcessor.MappingCompleted += OnMappingCompleted;
             progressWindow?.Show();
-            bool mappingSuccess = await mappingProcessor.TryPerformMappingToAsync(_originalFolderPath, _capturedMappingInfo, mappingCts);
+            bool mappingSuccess = await mappingProcessor.TryPerformMappingToAsync(_originalFolderPath, _capturedMappingInfo, mappingCts, finishDialogResult.IsOcsChecked);
             progressWindow?.Close();
             if (!mappingSuccess)
             {
@@ -364,8 +367,9 @@ public partial class MainWindow : Window
 
             }
 
+
         }
-        else if (actionResult == InitialReviewFinishAction.SaveToFile)
+        else if (finishDialogResult.Action == InitialReviewFinishAction.SaveToFile)
         {
             if (!TryCreateAndSaveTsvFile(capturedtaskResult, _capturedMappingInfo))
             {
@@ -451,7 +455,19 @@ public partial class MainWindow : Window
         Cancel
     }
 
-    private InitialReviewFinishAction ShowInitialReviewFinishDialog()
+    private readonly struct InitialReviewFinishDialogResult
+    {
+        public InitialReviewFinishDialogResult(InitialReviewFinishAction action, bool isOcsChecked)
+        {
+            Action = action;
+            IsOcsChecked = isOcsChecked;
+        }
+
+        public InitialReviewFinishAction Action { get; }
+        public bool IsOcsChecked { get; }
+    }
+
+    private InitialReviewFinishDialogResult ShowInitialReviewFinishDialog()
     {
         var dialog = new Window
         {
@@ -503,7 +519,7 @@ public partial class MainWindow : Window
             HorizontalAlignment = HorizontalAlignment.Right
         };
 
-        InitialReviewFinishAction result = InitialReviewFinishAction.Cancel;
+        InitialReviewFinishAction selectedAction = InitialReviewFinishAction.Cancel;
 
         var applyButton = new Button
         {
@@ -514,7 +530,7 @@ public partial class MainWindow : Window
         };
         applyButton.Click += (_, _) =>
         {
-            result = InitialReviewFinishAction.Apply;
+            selectedAction = InitialReviewFinishAction.Apply;
             dialog.Close();
         };
 
@@ -527,7 +543,7 @@ public partial class MainWindow : Window
         };
         saveButton.Click += (_, _) =>
         {
-            result = InitialReviewFinishAction.SaveToFile;
+            selectedAction = InitialReviewFinishAction.SaveToFile;
             dialog.Close();
         };
 
@@ -539,7 +555,7 @@ public partial class MainWindow : Window
         };
         cancelButton.Click += (_, _) =>
         {
-            result = InitialReviewFinishAction.Cancel;
+            selectedAction = InitialReviewFinishAction.Cancel;
             dialog.Close();
         };
 
@@ -548,9 +564,18 @@ public partial class MainWindow : Window
         buttons.Children.Add(cancelButton);
         root.Children.Add(buttons);
 
+        var ocsCheckBox = new CheckBox
+        {
+            Content = "OCS",
+            Margin = new Thickness(0, 12, 0, 0),
+            IsChecked = false,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        root.Children.Add(ocsCheckBox);
+
         dialog.Content = root;
         dialog.ShowDialog();
-        return result;
+        return new InitialReviewFinishDialogResult(selectedAction, ocsCheckBox.IsChecked == true);
     }
 
     private bool TryPromptReviewerName(out string reviewerName)
@@ -1252,7 +1277,8 @@ public partial class MainWindow : Window
             progressWindow?.Show();
             mappingResult = await mappingProcessor.TryPerformMappingToAsync(originalFolderPath,
                                                                             mappingInfo,
-                                                                            mappingCts);
+                                                                            mappingCts,
+                                                                            false);
         }
         finally
         {

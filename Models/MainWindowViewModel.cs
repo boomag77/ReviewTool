@@ -9,6 +9,14 @@ namespace ReviewTool.Models;
 public sealed class MainWindowViewModel : INotifyPropertyChanged
 {
     private const int MaxCustomStatusesCount = 5;
+    private static readonly HashSet<string> ReservedCustomTwoCharCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "FP"
+    };
+    private static readonly HashSet<string> ReservedCustomSuffixes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "fp"
+    };
 
     private BitmapSource? _originalImagePreview;
     private BitmapSource? _reviewingImagePreview;
@@ -66,6 +74,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             {
                 Name = "Pending",
                 Prefix = "_not_reviewed_"
+            }
+        },
+        new ReviewStatus
+        {
+            StatusType = ReviewStatusType.Accepted,
+            StatusFlag = new ReviewStatusFlag
+            {
+                Name = "First page",
+                ButtonTitle = "First page",
+                TwoCharCode = "FP",
+                Suffix = "fp"
             }
         }
     };
@@ -225,6 +244,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             return false;
         }
 
+        if (TryGetReservedCustomFlagConflict(reviewStatus.StatusFlag, out _))
+        {
+            return false;
+        }
+
         FillStatusFlagCollections(reviewStatus.StatusFlag);
         _customReviewStatuses.Add(reviewStatus);
         RebuildStatusButtons();
@@ -273,6 +297,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             validationError = $"Custom statuses limit is {MaxCustomStatusesCount}.";
             return false;
         }
+
+        var normalizedRequiredStatuses = EnsureMandatoryRequiredStatuses(requiredStatuses);
 
         var nextNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var nextCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -330,7 +356,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             return true;
         }
 
-        foreach (var requiredStatus in requiredStatuses)
+        foreach (var requiredStatus in normalizedRequiredStatuses)
         {
             if (!HasRequiredAffix(requiredStatus, isRequired: true))
             {
@@ -350,23 +376,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         foreach (var reviewStatus in customStatuses)
         {
             var flag = reviewStatus.StatusFlag;
+            var statusName = string.IsNullOrWhiteSpace(flag.Name) ? "(unnamed)" : flag.Name;
 
             if (!HasRequiredAffix(reviewStatus, isRequired: false))
             {
-                var statusName = string.IsNullOrWhiteSpace(flag.Name) ? "(unnamed)" : flag.Name;
                 validationError = $"Flag '{statusName}' must have Prefix or Suffix. Only required Accepted flag may have neither.";
+                return false;
+            }
+
+            if (TryGetReservedCustomFlagConflict(flag, out var reservedConflict))
+            {
+                validationError = $"Flag '{statusName}' uses reserved value: {reservedConflict}";
                 return false;
             }
 
             if (!TryFillSnapshotFlagCollections(flag))
             {
-                var statusName = string.IsNullOrWhiteSpace(flag.Name) ? "(unnamed)" : flag.Name;
                 validationError = $"Duplicate custom status flag values for '{statusName}'.";
                 return false;
             }
         }
 
-        _requiredReviewStatuses = requiredStatuses.ToList();
+        _requiredReviewStatuses = normalizedRequiredStatuses.ToList();
 
         _customReviewStatuses.Clear();
         foreach (var reviewStatus in customStatuses)
@@ -396,6 +427,64 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
         return !string.IsNullOrWhiteSpace(reviewStatus.StatusFlag.Suffix)
                || !string.IsNullOrWhiteSpace(reviewStatus.StatusFlag.Prefix);
+    }
+
+    private static bool TryGetReservedCustomFlagConflict(ReviewStatusFlag flag, out string conflict)
+    {
+        if (!string.IsNullOrWhiteSpace(flag.TwoCharCode)
+            && ReservedCustomTwoCharCodes.Contains(flag.TwoCharCode))
+        {
+            conflict = $"TwoCharCode '{flag.TwoCharCode}'.";
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(flag.Suffix)
+            && ReservedCustomSuffixes.Contains(flag.Suffix))
+        {
+            conflict = $"Suffix '{flag.Suffix}'.";
+            return true;
+        }
+
+        conflict = string.Empty;
+        return false;
+    }
+
+    private static List<ReviewStatus> EnsureMandatoryRequiredStatuses(IReadOnlyList<ReviewStatus> requiredStatuses)
+    {
+        var normalizedRequiredStatuses = requiredStatuses.ToList();
+        if (HasFirstPageRequiredStatus(normalizedRequiredStatuses))
+        {
+            return normalizedRequiredStatuses;
+        }
+
+        normalizedRequiredStatuses.Add(new ReviewStatus
+        {
+            StatusType = ReviewStatusType.Accepted,
+            StatusFlag = new ReviewStatusFlag
+            {
+                Name = "First page",
+                ButtonTitle = "First page",
+                TwoCharCode = "FP",
+                Suffix = "fp"
+            }
+        });
+
+        return normalizedRequiredStatuses;
+    }
+
+    private static bool HasFirstPageRequiredStatus(IReadOnlyList<ReviewStatus> requiredStatuses)
+    {
+        foreach (var status in requiredStatuses)
+        {
+            if (string.Equals(status.StatusFlag.Name, "First page", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status.StatusFlag.TwoCharCode, "FP", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status.StatusFlag.Suffix, "fp", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
 

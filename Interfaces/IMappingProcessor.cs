@@ -6,7 +6,8 @@ internal interface IMappingProcessor
 {
     Task<bool> TryPerformMappingToAsync(string originalImagesFolderPath,
                                         IReadOnlyList<ImageFileMappingInfo> mappingInfo,
-                                        CancellationTokenSource mappingCts);
+                                        CancellationTokenSource mappingCts,
+                                        bool isOcsEnabled);
 
     
 }
