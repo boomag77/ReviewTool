@@ -103,28 +103,27 @@ public sealed class FileProcessor : IFileProcessor
     }
 
 
-    //[DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
-    //private static extern int StrCmpLogicalW(string x, string y);
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+    private static extern int StrCmpLogicalW(string x, string y);
 
-    //private sealed class ExplorerComparer : IComparer<string>
-    //{
-    //    public static readonly ExplorerComparer Instance = new();
+    private sealed class ExplorerComparer : IComparer<string>
+    {
+        public static readonly ExplorerComparer Instance = new();
 
-    //    public int Compare(string? x, string? y)
-    //    {
-    //        if (ReferenceEquals(x, y)) return 0;
-    //        if (x is null) return -1;
-    //        if (y is null) return 1;
-    //        return StrCmpLogicalW(x, y);
-    //    }
-    //}
+        public int Compare(string? x, string? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+            return StrCmpLogicalW(x, y);
+        }
+    }
 
     public IReadOnlyList<string> GetImageFilesInDirectory(string folderPath)
     {
         return Directory.EnumerateFiles(folderPath)
             .Where(IsSupportedImageFile)
-            //.OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            //.OrderBy(path => Path.GetFileName(path), ExplorerComparer.Instance)
+            .OrderBy(path => Path.GetFileName(path), ExplorerComparer.Instance)
             .ToList();
     }
 
