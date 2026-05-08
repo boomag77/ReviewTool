@@ -18,6 +18,8 @@ namespace ReviewTool.Services
         public MessageBoxResult ShowQuestion(string text, string title) =>
             MessageBox.Show(_owner, text, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
 
+        public MessageBoxResult ShowQuestionYesNoCancel(string text, string title) =>
+            MessageBox.Show(_owner, text, title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
         public void ShowInfo(string text, string title) =>
             MessageBox.Show(_owner, text, title, MessageBoxButton.OK, MessageBoxImage.Information);
 

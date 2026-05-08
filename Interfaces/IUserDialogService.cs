@@ -5,6 +5,7 @@ namespace ReviewTool.Interfaces
     public interface IUserDialogService
     {
         MessageBoxResult ShowQuestion(string text, string title);
+        MessageBoxResult ShowQuestionYesNoCancel(string text, string title);
         void ShowInfo(string text, string title);
         void ShowWarning(string text, string title);
         void ShowError(string text, string title);

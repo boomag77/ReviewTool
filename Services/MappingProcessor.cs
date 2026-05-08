@@ -46,6 +46,11 @@ internal class MappingProcessor : IMappingProcessor, IDisposable
         return string.Equals(flagName?.Trim(), "First page", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsLastFirstPageFlag(string flagName)
+    {
+        return string.Equals(flagName?.Trim(), "Last&First page", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string BuildOcsNumberedName(int number, ReadOnlySpan<char> extension)
     {
         return string.Concat(number.ToString("D5"), extension);
@@ -172,19 +177,47 @@ internal class MappingProcessor : IMappingProcessor, IDisposable
 
                     if (isOcsEnabled)
                     {
-                        var isFirstPage = IsFirstPageFlag(rejectFlagName);
-
-                        if (isFirstPage)
+                        if (IsFirstPageFlag(rejectFlagName))
                         {
-                            var sectionFolderName = item.OriginalName;
-                            var sectionFolderPath = Path.Combine(initialReviewFolder, sectionFolderName);
+                            var sectionFolderPath = Path.Combine(initialReviewFolder, item.OriginalName);
                             Directory.CreateDirectory(sectionFolderPath);
 
                             ocsState.CurrentSectionFolderPath = sectionFolderPath;
                             ocsState.CurrentNumber = 1;
-                        }
 
-                        if (!string.IsNullOrWhiteSpace(ocsState.CurrentSectionFolderPath))
+                            var ocsFileName = BuildOcsNumberedName(ocsState.CurrentNumber, sourceExt);
+                            _fileProcessor.SaveFile(origFilePath, ocsState.CurrentSectionFolderPath, ocsFileName);
+                            ocsState.CurrentNumber++;
+
+                            totalMappedFiles++;
+                            MappingProgressUpdated?.Invoke(totalMappedFiles, totalFilesToMap);
+                            continue;
+                        }
+                        else if (IsLastFirstPageFlag(rejectFlagName))
+                        {
+                            // copy as last page of current section (if exists)
+                            if (!string.IsNullOrWhiteSpace(ocsState.CurrentSectionFolderPath))
+                            {
+                                var lastFileName = BuildOcsNumberedName(ocsState.CurrentNumber, sourceExt);
+                                _fileProcessor.SaveFile(origFilePath, ocsState.CurrentSectionFolderPath, lastFileName);
+                                ocsState.CurrentNumber++;
+                            }
+
+                            // copy as first page of new section
+                            var newSectionFolderPath = Path.Combine(initialReviewFolder, item.OriginalName);
+                            Directory.CreateDirectory(newSectionFolderPath);
+
+                            var firstFileName = BuildOcsNumberedName(1, sourceExt);
+                            _fileProcessor.SaveFile(origFilePath, newSectionFolderPath, firstFileName);
+
+                            ocsState.CurrentSectionFolderPath = newSectionFolderPath;
+                            ocsState.CurrentNumber = 2;
+
+                            totalMappedFiles++;
+                            MappingProgressUpdated?.Invoke(totalMappedFiles, totalFilesToMap);
+                            continue;
+                        }
+                        else if (!string.IsNullOrWhiteSpace(ocsState.CurrentSectionFolderPath))
                         {
                             var ocsFileName = BuildOcsNumberedName(ocsState.CurrentNumber, sourceExt);
                             _fileProcessor.SaveFile(origFilePath, ocsState.CurrentSectionFolderPath, ocsFileName);

@@ -11,11 +11,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private const int MaxCustomStatusesCount = 5;
     private static readonly HashSet<string> ReservedCustomTwoCharCodes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "FP"
+        "FP",
+        "LF"
     };
     private static readonly HashSet<string> ReservedCustomSuffixes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "fp"
+        "fp",
+        "lf"
     };
 
     private BitmapSource? _originalImagePreview;
@@ -85,6 +87,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 ButtonTitle = "First page",
                 TwoCharCode = "FP",
                 Suffix = "fp"
+            }
+        },
+        new ReviewStatus
+        {
+            StatusType = ReviewStatusType.Accepted,
+            StatusFlag = new ReviewStatusFlag
+            {
+                Name = "Last&First page",
+                ButtonTitle = "Last&First",
+                TwoCharCode = "LF",
+                Suffix = "lf"
             }
         }
     };
@@ -452,22 +465,36 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private static List<ReviewStatus> EnsureMandatoryRequiredStatuses(IReadOnlyList<ReviewStatus> requiredStatuses)
     {
         var normalizedRequiredStatuses = requiredStatuses.ToList();
-        if (HasFirstPageRequiredStatus(normalizedRequiredStatuses))
+
+        if (!HasFirstPageRequiredStatus(normalizedRequiredStatuses))
         {
-            return normalizedRequiredStatuses;
+            normalizedRequiredStatuses.Add(new ReviewStatus
+            {
+                StatusType = ReviewStatusType.Accepted,
+                StatusFlag = new ReviewStatusFlag
+                {
+                    Name = "First page",
+                    ButtonTitle = "First page",
+                    TwoCharCode = "FP",
+                    Suffix = "fp"
+                }
+            });
         }
 
-        normalizedRequiredStatuses.Add(new ReviewStatus
+        if (!HasLastFirstRequiredStatus(normalizedRequiredStatuses))
         {
-            StatusType = ReviewStatusType.Accepted,
-            StatusFlag = new ReviewStatusFlag
+            normalizedRequiredStatuses.Add(new ReviewStatus
             {
-                Name = "First page",
-                ButtonTitle = "First page",
-                TwoCharCode = "FP",
-                Suffix = "fp"
-            }
-        });
+                StatusType = ReviewStatusType.Accepted,
+                StatusFlag = new ReviewStatusFlag
+                {
+                    Name = "Last&First page",
+                    ButtonTitle = "Last&First",
+                    TwoCharCode = "LF",
+                    Suffix = "lf"
+                }
+            });
+        }
 
         return normalizedRequiredStatuses;
     }
@@ -479,6 +506,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             if (string.Equals(status.StatusFlag.Name, "First page", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(status.StatusFlag.TwoCharCode, "FP", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(status.StatusFlag.Suffix, "fp", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasLastFirstRequiredStatus(IReadOnlyList<ReviewStatus> requiredStatuses)
+    {
+        foreach (var status in requiredStatuses)
+        {
+            if (string.Equals(status.StatusFlag.Name, "Last&First page", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status.StatusFlag.TwoCharCode, "LF", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status.StatusFlag.Suffix, "lf", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }

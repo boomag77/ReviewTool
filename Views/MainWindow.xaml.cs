@@ -1036,23 +1036,27 @@ public partial class MainWindow : Window
         {
             var originalFolder = SelectFolder("Select original images folder");
             if (string.IsNullOrWhiteSpace(originalFolder))
-            {
                 return;
-            }
 
-            var mappingFilePath = SelectMappingFilePath();
-            if (string.IsNullOrWhiteSpace(mappingFilePath))
+            while (true)
             {
-                return;
-            }
+                var mappingFilePath = SelectMappingFilePath();
+                if (string.IsNullOrWhiteSpace(mappingFilePath)) return;
 
-            var (bookName, mappingInfo) = ParseMappingInfoFrom(mappingFilePath);
-            if (mappingInfo.Count == 0)
-            {
-                _userDialogService.ShowWarning("Mapping file is empty or invalid.", "Mapping");
-                return;
+                var (bookName, mappingInfo) = ParseMappingInfoFrom(mappingFilePath);
+                if (mappingInfo.Count == 0)
+                {
+                    _userDialogService.ShowWarning("Mapping file is empty or invalid.", "Mapping");
+                    continue;
+                }
+
+                var ocsResult = _userDialogService.ShowQuestionYesNoCancel("Apply OCS?", "Mapping");
+                if (ocsResult == MessageBoxResult.Cancel) continue;
+
+                bool isOcs = ocsResult == MessageBoxResult.Yes;
+                await TryPerformMappingForFolderAsync(originalFolder, bookName, mappingInfo, isOcs: isOcs);
+                break;
             }
-            await TryPerformMappingForFolderAsync(originalFolder, bookName, mappingInfo);
         }
         catch (Exception ex)
         {
@@ -1217,7 +1221,8 @@ public partial class MainWindow : Window
         string originalFolderPath,
         string mappingBookName,
         IReadOnlyList<ImageFileMappingInfo> mappingInfo,
-        bool isBulk = false)
+        bool isBulk = false,
+        bool isOcs = false)
     {
         if (string.IsNullOrWhiteSpace(originalFolderPath)
             || mappingInfo is null
@@ -1278,7 +1283,7 @@ public partial class MainWindow : Window
             mappingResult = await mappingProcessor.TryPerformMappingToAsync(originalFolderPath,
                                                                             mappingInfo,
                                                                             mappingCts,
-                                                                            false);
+                                                                            isOcs);
         }
         finally
         {
